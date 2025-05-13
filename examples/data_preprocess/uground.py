@@ -18,6 +18,7 @@ Preprocess the UGround dataset to parquet format
 import argparse
 import io
 import os
+import json
 
 import pandas as pd
 from PIL import Image
@@ -25,6 +26,30 @@ from datasets import Dataset, Sequence
 from datasets import Image as ImageData
 
 from verl.utils.hdfs_io import copy, makedirs
+
+
+def extract_bounding_box(original_action):
+    """
+    Extract bounding box coordinates from original_action string.
+
+    Args:
+        original_action (str): String containing bounding box information
+
+    Returns:
+        tuple: (x1, y1, x2, y2) coordinates or None if not found
+    """
+    try:
+        # Split by first ']' and get the JSON part
+        json_str = original_action.split("]", 1)[1]
+        # Parse JSON
+        data = json.loads(json_str)
+        # Extract box_model coordinates
+        box = data.get("box_model")
+        if box and len(box) == 4:
+            return tuple(float(x) for x in box)
+    except (IndexError, json.JSONDecodeError, ValueError, TypeError):
+        pass
+    return None
 
 
 def read_parquet_file(file_path):
@@ -39,11 +64,17 @@ def read_parquet_file(file_path):
             - viewport: Image bytes
             - vision_compatible_action: String describing the action
             - action_desc: String describing the action in more detail
+            - original_action: String containing bounding box information
     """
     df = pd.read_parquet(file_path)
 
     # Verify required columns exist
-    required_columns = ["viewport", "vision_compatible_action", "action_desc"]
+    required_columns = [
+        "viewport",
+        "vision_compatible_action",
+        "action_desc",
+        "original_action",
+    ]
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         raise ValueError(f"Missing required columns: {missing_columns}")
@@ -64,6 +95,13 @@ def process_data(df, split):
     """
 
     def process_fn(row, idx):
+        # Extract bounding box from original_action
+        bounding_box = extract_bounding_box(row["original_action"])
+        action_type = row["vision_compatible_action"].split("(")[0].strip()
+        ground_truth = {
+            "action": action_type,
+            "bbox": bounding_box,
+        }
         data = {
             "data_source": "uground",
             "prompt": [
@@ -84,13 +122,14 @@ def process_data(df, split):
             "ability": "vision",
             "reward_model": {
                 "style": "rule",
-                "ground_truth": row["vision_compatible_action"],
+                "ground_truth": ground_truth,
             },
             "extra_info": {
                 "split": split,
                 "index": idx,
                 "answer": row["vision_compatible_action"],
                 "question": row["action_desc"],
+                "bounding_box": bounding_box,
             },
         }
         return data
