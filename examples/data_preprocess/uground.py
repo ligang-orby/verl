@@ -16,8 +16,13 @@ Preprocess the UGround dataset to parquet format
 """
 
 import argparse
+import io
 import os
+
 import pandas as pd
+from PIL import Image
+from datasets import Dataset, Sequence
+from datasets import Image as ImageData
 
 from verl.utils.hdfs_io import copy, makedirs
 
@@ -75,7 +80,7 @@ def process_data(df, split):
                     "content": row["action_desc"],
                 },
             ],
-            "images": [row["viewport"]],
+            "images": [Image.open(io.BytesIO(row["viewport"]))],
             "ability": "vision",
             "reward_model": {
                 "style": "rule",
@@ -90,11 +95,8 @@ def process_data(df, split):
         }
         return data
 
-    processed_data = []
     for idx, row in df.iterrows():
-        processed_data.append(process_fn(row, idx))
-
-    return pd.DataFrame(processed_data)
+        yield process_fn(row, idx)
 
 
 if __name__ == "__main__":
@@ -110,17 +112,19 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Read the input parquet file
-    df = read_parquet_file(args.input_file)
-
-    # Process the data
-    processed_df = process_data(df, args.split)
-
     # Save to local directory
     local_dir = os.path.expanduser(args.local_dir)
     os.makedirs(local_dir, exist_ok=True)
     output_file = os.path.join(local_dir, f"{args.split}.parquet")
-    processed_df.to_parquet(output_file)
+
+    # Read the input parquet file and save it to dataset.
+    df = read_parquet_file(args.input_file)
+    # Have to do this for the PIL Image object, otherwise causing conversion type error.
+    dataset = Dataset.from_generator(
+        process_data, gen_kwargs={"df": df, "split": args.split}
+    )
+    dataset = dataset.cast_column("images", Sequence(ImageData()))
+    dataset.to_parquet(output_file)
 
     # Copy to HDFS if specified
     if args.hdfs_dir is not None:
