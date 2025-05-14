@@ -28,13 +28,15 @@ class UIGroundRewardScorer:
         super().__init__()
         self.thinking_pattern = re.compile(r"<think>(.*?)</think>", re.DOTALL)
         self.answer_pattern = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
-        # Updated pattern to handle both 2-arg and 3-arg formats
-        self.action_pattern = re.compile(r"(\w+)\((\d+),\s*(\d+)(?:,\s*'[^']*')?\)")
+        # Updated pattern to handle both 2-arg and 3-arg formats with decimal numbers
+        self.action_pattern = re.compile(
+            r"(\w+)\((\d*\.?\d+),\s*(\d*\.?\d+)(?:,\s*'[^']*')?\)"
+        )
         self.keyboard_pattern = re.compile(r"keyboard_type\('([^']*)'\)")
 
     def _extract_action_info(
         self, action_str: str
-    ) -> Tuple[str, Optional[int], Optional[int], Optional[str]]:
+    ) -> Tuple[str, Optional[float], Optional[float], Optional[str]]:
         """Extract action type and parameters from action string.
 
         Args:
@@ -54,7 +56,7 @@ class UIGroundRewardScorer:
         if not match:
             return "", None, None, None
         action_type, x, y = match.groups()
-        return action_type, int(x), int(y), None
+        return action_type, float(x), float(y), None
 
     def _check_coordinates_in_bbox(
         self, x: int, y: int, bbox: List[int], tolerance: int = 5
@@ -154,7 +156,6 @@ class UIGroundRewardScorer:
         coord_score = 0.0
 
         if gt_action_type == "keyboard_type":
-            print(f"pred_content: {pred_content}, gt_content: {gt_content}")
             # For keyboard_type actions, check content similarity
             similarity_threshold = ground_truth.get("similarity_threshold", 0.8)
             content_correct = self._check_text_similarity(
