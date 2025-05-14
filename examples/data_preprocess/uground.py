@@ -106,16 +106,13 @@ def process_data(df, split):
             "data_source": "uground",
             "prompt": [
                 {
-                    "role": "system",
-                    "content": (
-                        "You are a helpful assistant that map the action description to the action in the UI image. "
-                        "Think step by step before you answer. The reasoning process MUST BE enclosed within <think> </think> tags. "
-                        "The final answer MUST BE put in <answer> </answer> tags."
-                    ),
-                },
-                {
                     "role": "user",
-                    "content": row["action_desc"],
+                    "content": (
+                        "Map the user action description to the action in the UI image. "
+                        "Think step by step before you answer. The reasoning process MUST BE enclosed within <think> </think> tags. "
+                        "The final answer MUST BE put in <answer> </answer> tags. "
+                        "<image> Action description: " + row["action_desc"]
+                    ),
                 },
             ],
             "images": [Image.open(io.BytesIO(row["viewport"]))],

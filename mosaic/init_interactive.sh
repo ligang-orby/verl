@@ -1,7 +1,12 @@
+git config --global user.email "ligang@orby.ai"
+git config --global user.name "Gang Li"
+
 apt update
 apt install -y emacs
 apt install -y awscli
-pip install -y parquet-tools
+# urllib3<2 required by awscli
+pip install 'urllib3<2'
+pip install parquet-tools
 
 # Download model.
 python3 -c "import transformers; transformers.pipeline(model='Qwen/Qwen2.5-VL-7B-Instruct')"
