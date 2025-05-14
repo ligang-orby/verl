@@ -15,8 +15,10 @@
 Reward scoring for UI UGround task
 """
 
+import logging
 import re
-from typing import Dict, List, Tuple
+from difflib import SequenceMatcher
+from typing import Dict, List, Tuple, Optional
 
 
 class UIGroundRewardScorer:
@@ -27,21 +29,30 @@ class UIGroundRewardScorer:
         self.thinking_pattern = re.compile(r"<think>(.*?)</think>", re.DOTALL)
         self.answer_pattern = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
         self.action_pattern = re.compile(r"(\w+)\((\d+),\s*(\d+)\)")
+        self.keyboard_pattern = re.compile(r"keyboard_type\('([^']*)'\)")
 
-    def _extract_action_info(self, action_str: str) -> Tuple[str, int, int]:
-        """Extract action type and coordinates from action string.
+    def _extract_action_info(
+        self, action_str: str
+    ) -> Tuple[str, Optional[int], Optional[int], Optional[str]]:
+        """Extract action type and parameters from action string.
 
         Args:
-            action_str: Action string in format "action_type(x, y)"
+            action_str: Action string in format "action_type(x, y)" or "keyboard_type('content')"
 
         Returns:
-            Tuple of (action_type, x, y)
+            Tuple of (action_type, x, y, content)
         """
+        # Try keyboard_type pattern first
+        keyboard_match = self.keyboard_pattern.match(action_str.strip())
+        if keyboard_match:
+            return "keyboard_type", None, None, keyboard_match.group(1)
+
+        # Try coordinate-based action pattern
         match = self.action_pattern.match(action_str.strip())
         if not match:
-            return "", 0, 0
+            return "", None, None, None
         action_type, x, y = match.groups()
-        return action_type, int(x), int(y)
+        return action_type, int(x), int(y), None
 
     def _check_coordinates_in_bbox(
         self, x: int, y: int, bbox: List[int], tolerance: int = 5
@@ -63,6 +74,26 @@ class UIGroundRewardScorer:
             and y1 - tolerance <= y <= y2 + tolerance
         )
 
+    def _check_text_similarity(
+        self, pred_content: str, gt_content: str, threshold: float = 0.8
+    ) -> bool:
+        """Check if predicted content matches ground truth content using text similarity.
+
+        Args:
+            pred_content: Predicted content string
+            gt_content: Ground truth content string
+            threshold: Minimum similarity score to consider as match
+
+        Returns:
+            True if similarity score is above threshold
+        """
+        if pred_content is None or gt_content is None:
+            return False
+        similarity = SequenceMatcher(
+            None, pred_content.lower(), gt_content.lower()
+        ).ratio()
+        return similarity >= threshold
+
     def score(self, prediction: str, ground_truth: Dict) -> Dict:
         """Score the prediction against ground truth.
 
@@ -71,6 +102,8 @@ class UIGroundRewardScorer:
             ground_truth: Dictionary containing ground truth information
                 - action: Ground truth action string
                 - bbox: Optional bounding box [x1, y1, x2, y2]
+                - content: Optional content for keyboard_type actions
+                - similarity_threshold: Optional threshold for text similarity
 
         Returns:
             Dictionary containing:
@@ -83,21 +116,42 @@ class UIGroundRewardScorer:
         has_answer = bool(answer_match)
 
         # Check 2: Action type validation
-        gt_action_type, _, _ = self._extract_action_info(ground_truth["action"])
+        gt_action_type, _, _, gt_content = self._extract_action_info(
+            ground_truth["action"]
+        )
         pred_answer = answer_match.group(1).strip() if answer_match else ""
-        pred_action_type, pred_x, pred_y = self._extract_action_info(pred_answer)
+        pred_action_type, pred_x, pred_y, pred_content = self._extract_action_info(
+            pred_answer
+        )
         action_type_correct = pred_action_type == gt_action_type
 
-        # Check 3: Coordinate validation
-        bbox = ground_truth.get("bbox")
+        # Check 3: Content/Coordinate validation
+        content_correct = False
         coordinates_correct = False
-        if bbox is not None:
-            coordinates_correct = self._check_coordinates_in_bbox(pred_x, pred_y, bbox)
+
+        if gt_action_type == "keyboard_type":
+            print(f"pred_content: {pred_content}, gt_content: {gt_content}")
+            # For keyboard_type actions, check content similarity
+            similarity_threshold = ground_truth.get("similarity_threshold", 0.8)
+            content_correct = self._check_text_similarity(
+                pred_content, gt_content, similarity_threshold
+            )
+        else:
+            # For coordinate-based actions, check bbox
+            bbox = ground_truth.get("bbox")
+            if bbox is not None and pred_x is not None and pred_y is not None:
+                coordinates_correct = self._check_coordinates_in_bbox(
+                    pred_x, pred_y, bbox
+                )
 
         # Calculate overall score
         format_score = 1.0 if (has_thinking and has_answer) else 0.0
         action_score = 1.0 if action_type_correct else 0.0
-        coord_score = 1.0 if coordinates_correct else 0.0
+
+        if gt_action_type == "keyboard_type":
+            coord_score = 1.0 if content_correct else 0.0
+        else:
+            coord_score = 1.0 if coordinates_correct else 0.0
 
         # Weight the scores (can be adjusted based on importance)
         weights = {"format": 0.2, "action_type": 0.3, "coordinates": 0.5}
@@ -108,25 +162,35 @@ class UIGroundRewardScorer:
             + weights["coordinates"] * coord_score
         )
 
+        details = {
+            "format_check": {
+                "has_thinking": has_thinking,
+                "has_answer": has_answer,
+                "score": format_score,
+            },
+            "action_type_check": {
+                "predicted": pred_action_type,
+                "ground_truth": gt_action_type,
+                "score": action_score,
+            },
+        }
+
+        if gt_action_type == "keyboard_type":
+            details["content_check"] = {
+                "predicted": pred_content,
+                "ground_truth": gt_content,
+                "score": coord_score,
+            }
+        else:
+            details["coordinate_check"] = {
+                "predicted": (pred_x, pred_y),
+                "ground_truth_bbox": ground_truth.get("bbox"),
+                "score": coord_score,
+            }
+
         return {
             "score": overall_score,
-            "details": {
-                "format_check": {
-                    "has_thinking": has_thinking,
-                    "has_answer": has_answer,
-                    "score": format_score,
-                },
-                "action_type_check": {
-                    "predicted": pred_action_type,
-                    "ground_truth": gt_action_type,
-                    "score": action_score,
-                },
-                "coordinate_check": {
-                    "predicted": (pred_x, pred_y),
-                    "ground_truth_bbox": bbox,
-                    "score": coord_score,
-                },
-            },
+            "details": details,
         }
 
 
@@ -138,6 +202,8 @@ def compute_score(prediction: str, ground_truth: Dict) -> Dict:
         ground_truth: Dictionary containing ground truth information
             - action: Ground truth action string
             - bbox: Optional bounding box [x1, y1, x2, y2]
+            - content: Optional content for keyboard_type actions
+            - similarity_threshold: Optional threshold for text similarity
 
     Returns:
         Dictionary containing:
@@ -145,4 +211,6 @@ def compute_score(prediction: str, ground_truth: Dict) -> Dict:
             - details: Dictionary with individual check results
     """
     scorer = UIGroundRewardScorer()
-    return scorer.score(prediction, ground_truth)["score"]
+    result = scorer.score(prediction, ground_truth)
+    logging.info(f"UIGroundRewardScorer result: {result}")
+    return result["score"]
