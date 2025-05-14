@@ -28,7 +28,8 @@ class UIGroundRewardScorer:
         super().__init__()
         self.thinking_pattern = re.compile(r"<think>(.*?)</think>", re.DOTALL)
         self.answer_pattern = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
-        self.action_pattern = re.compile(r"(\w+)\((\d+),\s*(\d+)\)")
+        # Updated pattern to handle both 2-arg and 3-arg formats
+        self.action_pattern = re.compile(r"(\w+)\((\d+),\s*(\d+)(?:,\s*'[^']*')?\)")
         self.keyboard_pattern = re.compile(r"keyboard_type\('([^']*)'\)")
 
     def _extract_action_info(
@@ -38,6 +39,7 @@ class UIGroundRewardScorer:
 
         Args:
             action_str: Action string in format "action_type(x, y)" or "keyboard_type('content')"
+                or "select_option(x, y, 'string')"
 
         Returns:
             Tuple of (action_type, x, y, content)
@@ -73,6 +75,27 @@ class UIGroundRewardScorer:
             x1 - tolerance <= x <= x2 + tolerance
             and y1 - tolerance <= y <= y2 + tolerance
         )
+
+    def _check_scroll_values(
+        self, pred_x: int, pred_y: int, gt_x: int, gt_y: int
+    ) -> float:
+        """Check if scroll values match in sign.
+
+        Args:
+            pred_x: Predicted x scroll value
+            pred_y: Predicted y scroll value
+            gt_x: Ground truth x scroll value
+            gt_y: Ground truth y scroll value
+
+        Returns:
+            float: Score of 1.0 if signs match, 0.0 otherwise
+        """
+        # Check if signs match for both x and y
+        x_sign_match = (pred_x * gt_x > 0) or (pred_x == 0 and gt_x == 0)
+        y_sign_match = (pred_y * gt_y > 0) or (pred_y == 0 and gt_y == 0)
+
+        # Return 1.0 if both signs match, 0.0 otherwise
+        return 1.0 if (x_sign_match and y_sign_match) else 0.0
 
     def _check_text_similarity(
         self, pred_content: str, gt_content: str, threshold: float = 0.8
@@ -116,7 +139,7 @@ class UIGroundRewardScorer:
         has_answer = bool(answer_match)
 
         # Check 2: Action type validation
-        gt_action_type, _, _, gt_content = self._extract_action_info(
+        gt_action_type, gt_x, gt_y, gt_content = self._extract_action_info(
             ground_truth["action"]
         )
         pred_answer = answer_match.group(1).strip() if answer_match else ""
@@ -128,6 +151,7 @@ class UIGroundRewardScorer:
         # Check 3: Content/Coordinate validation
         content_correct = False
         coordinates_correct = False
+        coord_score = 0.0
 
         if gt_action_type == "keyboard_type":
             print(f"pred_content: {pred_content}, gt_content: {gt_content}")
@@ -136,22 +160,28 @@ class UIGroundRewardScorer:
             content_correct = self._check_text_similarity(
                 pred_content, gt_content, similarity_threshold
             )
+            coord_score = 1.0 if content_correct else 0.0
+        elif gt_action_type == "scroll":
+            # For scroll actions, check scroll values
+            if (
+                pred_x is not None
+                and pred_y is not None
+                and gt_x is not None
+                and gt_y is not None
+            ):
+                coord_score = self._check_scroll_values(pred_x, pred_y, gt_x, gt_y)
         else:
-            # For coordinate-based actions, check bbox
+            # For other coordinate-based actions, check bbox
             bbox = ground_truth.get("bbox")
             if bbox is not None and pred_x is not None and pred_y is not None:
                 coordinates_correct = self._check_coordinates_in_bbox(
                     pred_x, pred_y, bbox
                 )
+                coord_score = 1.0 if coordinates_correct else 0.0
 
         # Calculate overall score
         format_score = 1.0 if (has_thinking and has_answer) else 0.0
         action_score = 1.0 if action_type_correct else 0.0
-
-        if gt_action_type == "keyboard_type":
-            coord_score = 1.0 if content_correct else 0.0
-        else:
-            coord_score = 1.0 if coordinates_correct else 0.0
 
         # Weight the scores (can be adjusted based on importance)
         weights = {"format": 0.2, "action_type": 0.3, "coordinates": 0.5}
@@ -179,6 +209,12 @@ class UIGroundRewardScorer:
             details["content_check"] = {
                 "predicted": pred_content,
                 "ground_truth": gt_content,
+                "score": coord_score,
+            }
+        elif gt_action_type == "scroll":
+            details["scroll_check"] = {
+                "predicted": (pred_x, pred_y),
+                "ground_truth": (gt_x, gt_y),
                 "score": coord_score,
             }
         else:
