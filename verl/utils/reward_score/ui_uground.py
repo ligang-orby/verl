@@ -18,10 +18,8 @@ Reward scoring for UI UGround task
 import re
 from typing import Dict, List, Tuple
 
-from verl.utils.reward_score.base import BaseRewardScorer
 
-
-class UIGroundRewardScorer(BaseRewardScorer):
+class UIGroundRewardScorer:
     """Reward scorer for UI UGround task."""
 
     def __init__(self):
@@ -147,4 +145,4 @@ def compute_score(prediction: str, ground_truth: Dict) -> Dict:
             - details: Dictionary with individual check results
     """
     scorer = UIGroundRewardScorer()
-    return scorer.score(prediction, ground_truth)
+    return scorer.score(prediction, ground_truth)["score"]

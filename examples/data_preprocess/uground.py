@@ -108,9 +108,15 @@ def process_data(df, split):
                 {
                     "role": "user",
                     "content": (
-                        "Map the user action description to the action in the UI image. "
+                        "Map the user action description to the action with coordinates in the UI image. "
                         "Think step by step before you answer. The reasoning process MUST BE enclosed within <think> </think> tags. "
-                        "The final answer MUST BE put in <answer> </answer> tags. "
+                        "The action MUST BE put in <answer> </answer> tags. "
+                        "The candidate actions include the following:\n"
+                        "- mouse_click(x, y): Click on the coordinate (x, y)\n"
+                        "- mouse_move(x, y): Move the mouse cursor to the coordinate (x, y)\n"
+                        "- scroll(x, y): Scroll by the distance in the x and/or y axis\n"
+                        "- keyboard_type('content'): Type the content in the quotes\n"
+                        "- select_option(x, y): Select the option at coordinate (x, y)\n"
                         "<image> Action description: " + row["action_desc"]
                     ),
                 },
