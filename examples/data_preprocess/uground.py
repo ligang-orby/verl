@@ -97,9 +97,8 @@ def process_data(df, split):
     def process_fn(row, idx):
         # Extract bounding box from original_action
         bounding_box = extract_bounding_box(row["original_action"])
-        action_type = row["vision_compatible_action"].split("(")[0].strip()
         ground_truth = {
-            "action": action_type,
+            "action": row["vision_compatible_action"],
             "bbox": bounding_box,
         }
         data = {
