@@ -26,6 +26,13 @@ from datasets import Dataset, Sequence
 from datasets import Image as ImageData
 
 from verl.utils.hdfs_io import copy, makedirs
+from PIL import Image
+from transformers import AutoProcessor
+from qwen_vl_utils import smart_resize
+
+
+MODEL_PATH = "Qwen/Qwen2.5-VL-7B-Instruct"
+PROCESSOR = AutoProcessor.from_pretrained(MODEL_PATH)
 
 
 def extract_bounding_box(original_action):
@@ -82,6 +89,22 @@ def read_parquet_file(file_path):
     return df
 
 
+def get_xy_resize_ratio(image):
+    """
+    Get the resize ratio of the image.
+    """
+    resized_height, resized_width = smart_resize(
+        image.height,
+        image.width,
+        factor=PROCESSOR.image_processor.patch_size
+        * PROCESSOR.image_processor.merge_size,
+        min_pixels=PROCESSOR.image_processor.min_pixels,
+        max_pixels=PROCESSOR.image_processor.max_pixels,
+    )
+
+    return resized_height / image.height, resized_width / image.width
+
+
 def process_data(df, split):
     """
     Process the data into the required format.
@@ -96,11 +119,22 @@ def process_data(df, split):
 
     def process_fn(row, idx):
         # Extract bounding box from original_action
+        image = Image.open(io.BytesIO(row["viewport"]))
+        x_resize_ratio, y_resize_ratio = get_xy_resize_ratio(image)
         bounding_box = extract_bounding_box(row["original_action"])
+        if bounding_box is not None:
+            # Convert the bounding box based on the resized image size
+            bounding_box = [
+                bounding_box[0] * x_resize_ratio,
+                bounding_box[1] * y_resize_ratio,
+                bounding_box[2] * x_resize_ratio,
+                bounding_box[3] * y_resize_ratio,
+            ]
         ground_truth = {
             "action": row["vision_compatible_action"],
             "bbox": bounding_box,
         }
+
         data = {
             "data_source": "uground",
             "prompt": [
@@ -120,7 +154,7 @@ def process_data(df, split):
                     ),
                 },
             ],
-            "images": [Image.open(io.BytesIO(row["viewport"]))],
+            "images": [image],
             "ability": "vision",
             "reward_model": {
                 "style": "rule",
@@ -137,7 +171,11 @@ def process_data(df, split):
         return data
 
     for idx, row in df.iterrows():
-        yield process_fn(row, idx)
+        data = process_fn(row, idx)
+        if len(data["prompt"][0]["content"]) > 4000:
+            # Filter out the data with too long prompt
+            continue
+        yield data
 
 
 if __name__ == "__main__":
