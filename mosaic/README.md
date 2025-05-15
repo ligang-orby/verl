@@ -4,8 +4,8 @@
 - Run `bash examples/grpo_trainer/run_qwen2_5_vl-7b_uground.sh` to start training with the ActionDescription dataset.
 
 # Rule-based reward
-- The rule-based reward for ActionDescription is defined in verl/utils/reward_score/ui_uground.py. It consists of 3 rewards: 1) whether the response contains both thinking and answer, 2) whether the action type is correct, 3) whether the action args are correct, e.g., x/y coordinate is within groundtruth bounding box.
+- The rule-based reward for ActionDescription is defined in [ui_uground.py](/verl/utils/reward_score/ui_uground.py). It consists of 3 rewards: 1) whether the response contains both thinking and answer, 2) whether the action type is correct, 3) whether the action args are correct, e.g., x/y coordinate is within groundtruth bounding box.
 - You can create rule-based reward for other dataset following this example.
 
 # Dataset format
-- VERL can read parquet files and we just need to make sure each record has the required features. Check examples/data_preprocess/uground.py to see how we convert the dataset with caveats like adjusting bbox coordinates for resized images.
+- VERL can read parquet files and we just need to make sure each record has the required features. Check [uground.py](/examples/data_preprocess/uground.py) to see how we convert the dataset with caveats like adjusting bbox coordinates for resized images.
