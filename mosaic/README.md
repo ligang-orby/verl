@@ -5,7 +5,11 @@
 
 # Rule-based reward
 - The rule-based reward for ActionDescription is defined in [ui_uground.py](/verl/utils/reward_score/ui_uground.py). It consists of 3 rewards: 1) whether the response contains both thinking and answer, 2) whether the action type is correct, 3) whether the action args are correct, e.g., x/y coordinate is within groundtruth bounding box.
-- You can create rule-based reward for other dataset following this example.
+- You can create rule-based reward for other dataset following this example. **Use Cursor to save a lot of time!**
 
 # Dataset format
 - VERL can read parquet files and we just need to make sure each record has the required features. Check [uground.py](/examples/data_preprocess/uground.py) to see how we convert the dataset with caveats like adjusting bbox coordinates for resized images.
+
+# TODO
+- Tune batch size, max seq length, etc to obtain best GPU utilization and performance.
+- Multinode training (if needed).
