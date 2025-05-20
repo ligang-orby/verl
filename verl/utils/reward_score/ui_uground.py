@@ -30,7 +30,7 @@ class UIGroundRewardScorer:
         self.answer_pattern = re.compile(r"<answer>(.*?)</answer>", re.DOTALL)
         # Updated pattern to handle both 2-arg and 3-arg formats with decimal numbers
         self.action_pattern = re.compile(
-            r"(\w+)\((\d*\.?\d+),\s*(\d*\.?\d+)(?:,\s*'[^']*')?\)"
+            r"(\w+)\((-?\d*\.?\d+),\s*(-?\d*\.?\d+)(?:,\s*'[^']*')?\)"
         )
         self.keyboard_pattern = re.compile(r"keyboard_type\('([^']*)'\)")
 
@@ -59,7 +59,7 @@ class UIGroundRewardScorer:
         return action_type, float(x), float(y), None
 
     def _check_coordinates_in_bbox(
-        self, x: int, y: int, bbox: List[int], tolerance: int = 5
+        self, x: int, y: int, bbox: List[int], tolerance: int = 0
     ) -> bool:
         """Check if coordinates are within bounding box with tolerance.
 
@@ -194,6 +194,7 @@ class UIGroundRewardScorer:
         )
 
         details = {
+            "score": overall_score,
             "format_check": {
                 "has_thinking": has_thinking,
                 "has_answer": has_answer,
@@ -225,10 +226,7 @@ class UIGroundRewardScorer:
                 "score": coord_score,
             }
 
-        return {
-            "score": overall_score,
-            "details": details,
-        }
+        return details
 
 
 def compute_score(prediction: str, ground_truth: Dict) -> Dict:
@@ -250,4 +248,4 @@ def compute_score(prediction: str, ground_truth: Dict) -> Dict:
     scorer = UIGroundRewardScorer()
     result = scorer.score(prediction, ground_truth)
     logging.info(f"UIGroundRewardScorer result: {result}")
-    return result["score"]
+    return result
