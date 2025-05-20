@@ -9,7 +9,6 @@ python3 -m verl.trainer.main_ppo \
     data.train_files=$HOME/data/uground/train.parquet \
     data.val_files=$HOME/data/uground/test.parquet \
     data.train_batch_size=64 \
-    data.val_batch_size=64 \
     data.max_prompt_length=7936 \
     data.max_response_length=256 \
     data.filter_overlong_prompts=True \
@@ -50,5 +49,4 @@ python3 -m verl.trainer.main_ppo \
     trainer.nnodes=1 \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.log_val_generations=2 \
-    trainer.total_epochs=1 $@
+    trainer.total_epochs=2 $@
