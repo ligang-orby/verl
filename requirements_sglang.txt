@@ -1,5 +1,6 @@
 # requirements.txt records the full set of dependencies for development
 accelerate
+boto3==1.38.19
 codetiming
 datasets
 dill
@@ -11,6 +12,7 @@ peft
 pyarrow>=15.0.0
 pybind11
 pylatexenc
+qwen-vl-utils==0.0.11
 ray[default]>=2.10
 tensordict<=0.6.2
 torchdata
