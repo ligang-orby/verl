@@ -12,7 +12,7 @@ python3 -m verl.trainer.main_ppo \
     data.max_prompt_length=7936 \
     data.max_response_length=256 \
     data.filter_overlong_prompts=True \
-    data.truncation='right' \
+    data.truncation='error' \
     data.image_key=images \
     actor_rollout_ref.model.path=Qwen/Qwen2.5-VL-7B-Instruct \
     actor_rollout_ref.actor.optim.lr=1e-6 \
