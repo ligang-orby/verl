@@ -15,7 +15,6 @@
 Reward scoring for UI UGround task
 """
 
-import logging
 import re
 from difflib import SequenceMatcher
 from typing import Dict, List, Tuple, Optional
@@ -208,19 +207,19 @@ class UIGroundRewardScorer:
         }
 
         if gt_action_type == "keyboard_type":
-            details["content_check"] = {
+            details["arg_check"] = {
                 "predicted": pred_content,
                 "ground_truth": gt_content,
                 "score": coord_score,
             }
         elif gt_action_type == "scroll":
-            details["scroll_check"] = {
+            details["arg_check"] = {
                 "predicted": (pred_x, pred_y),
                 "ground_truth": (gt_x, gt_y),
                 "score": coord_score,
             }
         else:
-            details["coordinate_check"] = {
+            details["arg_check"] = {
                 "predicted": (pred_x, pred_y),
                 "ground_truth_bbox": ground_truth.get("bbox"),
                 "score": coord_score,
@@ -247,5 +246,4 @@ def compute_score(prediction: str, ground_truth: Dict) -> Dict:
     """
     scorer = UIGroundRewardScorer()
     result = scorer.score(prediction, ground_truth)
-    logging.info(f"UIGroundRewardScorer result: {result}")
     return result
