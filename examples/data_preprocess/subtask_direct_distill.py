@@ -6,6 +6,9 @@ import argparse
 
 import boto3
 import ray
+from tqdm import tqdm
+
+ray.init()
 
 
 def get_s3_bucket_and_key_from_uri(s3_uri: str) -> tuple[str, str]:
@@ -49,13 +52,16 @@ def list_s3_uris(s3_client, s3_uri: str) -> list[str]:
 
 
 @ray.remote
-def data_processing_task(pb_uris_batch: list[str], output_path: str) -> None:
+def data_processing_task(pb_uris_batch: list[str], output_path: str) -> int:
     """
     Process a batch of protobuf URIs and save the output to a parquet file.
 
     Args:
         pb_uris_batch (list[str]): A list of protobuf URIs.
-        output_path (str): The output path.
+        output_path (str): The output path to upload the parquet file.
+
+    Returns:
+        int: The number of data points created in the parquet file.
     """
     pass
 
@@ -65,8 +71,18 @@ def main(input_path: str, output_path: str) -> None:
     pb_uris = list_s3_uris(s3_client, input_path)
     pb_uris_batches = [pb_uris[i : i + 100] for i in range(0, len(pb_uris), 100)]
 
-    ray.init()
-    ray.get([data_processing_task.remote(pb_uris_batch, output_path) for pb_uris_batch in pb_uris_batches])
+    tasks = [data_processing_task.remote(pb_uris_batch, output_path) for pb_uris_batch in pb_uris_batches]
+
+    pbar = tqdm(total=len(tasks), desc="Processing batches")
+    num_data_points = []
+    while tasks:
+        done_id, tasks = ray.wait(tasks, num_returns=1)
+        result = ray.get(done_id[0])
+        num_data_points.append(result)
+        pbar.update(1)
+
+    pbar.close()
+    print(f"Total number of data points created: {sum(num_data_points)}")
 
 
 if __name__ == "__main__":
