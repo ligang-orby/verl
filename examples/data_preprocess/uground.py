@@ -19,6 +19,7 @@ import argparse
 import io
 import os
 import json
+import logging
 
 import pandas as pd
 from PIL import Image
@@ -135,6 +136,10 @@ def process_data(df, split):
             "bbox": bounding_box,
         }
 
+        action_desc = row["action_desc"].strip()
+        if action_desc.endswith("assistant"):
+            action_desc = action_desc[:-9].strip()
+
         data = {
             "data_source": "uground",
             "prompt": [
@@ -150,7 +155,7 @@ def process_data(df, split):
                         "- scroll(x, y): Scroll by the distance in the x and/or y axis\n"
                         "- keyboard_type('content'): Type the content in the quotes\n"
                         "- select_option(x, y): Select the option at coordinate (x, y)\n"
-                        "<image> Action description: " + row["action_desc"]
+                        "<image> Action description: " + action_desc
                     ),
                 },
             ],
@@ -164,7 +169,7 @@ def process_data(df, split):
                 "split": split,
                 "index": idx,
                 "answer": row["vision_compatible_action"],
-                "question": row["action_desc"],
+                "question": action_desc,
                 "bounding_box": bounding_box,
             },
         }
@@ -172,7 +177,10 @@ def process_data(df, split):
 
     for idx, row in df.iterrows():
         data = process_fn(row, idx)
-        if len(data["prompt"][0]["content"]) > 4000:
+        if len(data["prompt"][0]["content"]) > 2000:
+            logging.warning(
+                "Too long prompt: " + str(len(data["prompt"][0]["content"]))
+            )
             # Filter out the data with too long prompt
             continue
         yield data
@@ -186,7 +194,10 @@ if __name__ == "__main__":
     parser.add_argument("--local_dir", default="~/data/uground")
     parser.add_argument("--hdfs_dir", default=None)
     parser.add_argument(
-        "--split", default="train", choices=["train", "test"], help="Dataset split"
+        "--split",
+        default="train",
+        choices=["train", "test", "dev"],
+        help="Dataset split",
     )
 
     args = parser.parse_args()

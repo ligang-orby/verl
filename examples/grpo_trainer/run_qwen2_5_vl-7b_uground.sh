@@ -50,5 +50,5 @@ python3 -m verl.trainer.main_ppo \
     trainer.nnodes=1 \
     trainer.save_freq=10 \
     trainer.test_freq=10 \
-    trainer.log_val_generations=10 \
+    trainer.log_val_generations=2 \
     trainer.total_epochs=1 $@
