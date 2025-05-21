@@ -3,16 +3,18 @@ Preprocess the subtask SVA v3 dataset to parquet format
 """
 
 import argparse
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import boto3
 import pandas as pd
 import ray
-from fm.action_data_pb2 import ActionData
 from PIL import Image
 from tqdm import tqdm
 
-from .utils import s3_utils
+from dependencies.protos.fm.action_data_pb2 import ActionData
+from dependencies.protos.fm.llm_data_pb2 import LLMInteraction
+
+from .utils import action_parsing_utils, image_utils, s3_utils
 
 ray.init()
 
@@ -31,12 +33,40 @@ class VERLDataPoint(TypedDict):
     data_source: str = "subtask_direct_distill"
     prompt: list[PromptDict]
     images: list[Image.Image]
-    ability: str = "vision"
+    ability: str
     reward_model: RewardModelDict
     extra_info: dict
 
 
-def convert_action_to_datapoint(action: ActionData) -> VERLDataPoint:
+def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["reward_model", "executor"]) -> tuple[str, str, list[Image.Image], dict]:
+    """
+    Get the system prompt, user prompt, images, and ground truth from a LLM interaction.
+    """
+    # System prompt
+    assert llm_interaction.llm_messages[0].role == "system", "System prompt should be the first message"
+    system_prompt = llm_interaction.llm_messages[0].llm_contents[0].text
+
+    # User prompt
+    assert llm_interaction.llm_messages[1].role == "user", "User prompt should be the second message"
+    user_prompt_list = [llm_content.text if llm_content.text else "<image>" for llm_content in llm_interaction.llm_messages[1].llm_contents]
+    user_prompt = "".join(user_prompt_list)
+
+    # Images
+    image_urls = [llm_content.image_url for llm_content in llm_interaction.llm_messages[1].llm_contents if llm_content.image_url]
+    images = [image_utils.base64_bytes_to_image(image_url) for image_url in image_urls]
+
+    # Ground truth
+    if ability == "reward_model":
+        ground_truth = action_parsing_utils.extract_content_by_tags(llm_interaction.response, ["reasoning", "should_end", "goal_achieved", "answer"])
+    elif ability == "executor":
+        ground_truth = action_parsing_utils.extract_content_by_tags(llm_interaction.response, ["thinking", "action"])
+    else:
+        raise ValueError(f"Invalid ability: {ability}")
+
+    return system_prompt, user_prompt, images, ground_truth
+
+
+def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataPoint:
     """
     Convert individual action to a VERLDataPoint.
 
@@ -46,11 +76,81 @@ def convert_action_to_datapoint(action: ActionData) -> VERLDataPoint:
     Returns:
         VERLDataPoint: The converted data point.
     """
-    pass
+
+    llm_interactions = action.agent_state.llm_interactions
+    assert len(llm_interactions) > 0, "No LLM interactions found"
+    assert len(llm_interactions) <= 2, "More than 2 LLM interactions found"
+
+    reward_model_interaction = llm_interactions[0]
+    ability = "reward_model"
+
+    (
+        reward_model_system_prompt,
+        reward_model_user_prompt,
+        reward_model_images,
+        reward_model_ground_truth,
+    ) = get_llm_interaction_data(reward_model_interaction, ability)
+
+    extra_info = {
+        "action_id": action.id,
+        "step_idx": step_idx,
+    }
+
+    reward_model_data_point = VERLDataPoint(
+        prompt=[
+            PromptDict(
+                role="user",  # Note: this is NOT a mistake. We use user prompts for both to conform with vanilla Qwen-VL-2.5
+                content=reward_model_system_prompt,
+            ),
+            PromptDict(
+                role="user",
+                content=reward_model_user_prompt,
+            ),
+        ],
+        images=reward_model_images,
+        ability=ability,
+        reward_model=RewardModelDict(
+            ground_truth=reward_model_ground_truth,
+        ),
+        extra_info=extra_info,
+    )
+
+    executor_data_point = None
+    if len(llm_interactions) == 2:
+        ability = "executor"
+        executor_interaction = llm_interactions[1]
+
+        (
+            executor_system_prompt,
+            executor_user_prompt,
+            executor_images,
+            executor_ground_truth,
+        ) = get_llm_interaction_data(executor_interaction, ability)
+
+        executor_data_point = VERLDataPoint(
+            prompt=[
+                PromptDict(
+                    role="user",
+                    content=executor_system_prompt,  # Note: this is NOT a mistake. We use user prompts for both to conform with vanilla Qwen-VL-2.5
+                ),
+                PromptDict(
+                    role="user",
+                    content=executor_user_prompt,
+                ),
+            ],
+            images=executor_images,
+            ability=ability,
+            reward_model=RewardModelDict(
+                ground_truth=executor_ground_truth,
+            ),
+            extra_info=extra_info,
+        )
+
+    return [reward_model_data_point, executor_data_point]
 
 
 @ray.remote
-def data_processing_task(pb_uris_batch: list[str], output_path: str) -> int:
+def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str) -> int:
     """
     Process a batch of protobuf URIs and save the output to a parquet file.
 
@@ -61,25 +161,35 @@ def data_processing_task(pb_uris_batch: list[str], output_path: str) -> int:
     Returns:
         int: The number of data points created in the parquet file.
     """
+    reward_model_data_list: list[VERLDataPoint] = []
+    executor_data_list: list[VERLDataPoint] = []
     for pb_uri in pb_uris_batch:
         td = s3_utils.load_trajectory_data_from_s3(pb_uri)
 
-        data_list: list[VERLDataPoint] = []
-        for action in td.actions:
-            data = convert_action_to_datapoint(action)
-            data_list.append(data)
+        for idx, action in enumerate(td.actions):
+            reward_model_data_point, executor_data_point = convert_action_to_datapoints(action, idx)
+            reward_model_data_list.extend(reward_model_data_point)
+            if executor_data_point:
+                executor_data_list.extend(executor_data_point)
 
-        data_df = pd.DataFrame(data_list)
-        data_df.to_parquet(output_path, index=False)
-        return len(data_list)
+    reward_model_data_df = pd.DataFrame(reward_model_data_list)
+    executor_data_df = pd.DataFrame(executor_data_list)
+
+    s3_client = boto3.client("s3")
+    reward_model_output_path = f"{output_path}/reward_model/batch_{batch_idx}.parquet"
+    executor_output_path = f"{output_path}/executor/batch_{batch_idx}.parquet"
+    s3_utils.upload_df_to_s3_as_parquet(reward_model_data_df, reward_model_output_path, s3_client)
+    s3_utils.upload_df_to_s3_as_parquet(executor_data_df, executor_output_path, s3_client)
+
+    return len(reward_model_data_list) + len(executor_data_list)
 
 
 def main(input_path: str, output_path: str) -> None:
     s3_client = boto3.client("s3")
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
-    pb_uris_batches = [pb_uris[i : i + 100] for i in range(0, len(pb_uris), 100)]
+    pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 100)]
 
-    tasks = [data_processing_task.remote(pb_uris_batch, output_path) for pb_uris_batch in pb_uris_batches]
+    tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
 
     pbar = tqdm(total=len(tasks), desc="Processing batches")
     num_data_points = []
@@ -90,7 +200,7 @@ def main(input_path: str, output_path: str) -> None:
         pbar.update(1)
 
     pbar.close()
-    print(f"Total number of data points created: {sum(num_data_points)}")
+    print(f"Total number of data points (reward model + executor) created: {sum(num_data_points)}")
 
 
 if __name__ == "__main__":

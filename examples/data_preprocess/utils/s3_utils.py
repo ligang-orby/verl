@@ -10,7 +10,8 @@ from urllib.parse import urlparse
 import boto3
 import pandas as pd
 from botocore.exceptions import ClientError
-from fm.trajectory_data_pb2 import TrajectoryData
+
+from dependencies.protos.fm.trajectory_data_pb2 import TrajectoryData
 
 
 def load_s3_object_as_bytes(s3_uri: str) -> bytes:
