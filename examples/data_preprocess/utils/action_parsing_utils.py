@@ -2,8 +2,6 @@ import ast
 import dataclasses
 import re
 
-from browsergym.core.action.parsers import _build_highlevel_action_parser
-
 NOOP_ACTIONS = ["noop"]
 SCROLL_ACTIONS = ["scroll"]
 NO_PARAMETERS_ACTIONS = [
@@ -64,67 +62,6 @@ class BrowserGymActionInfo:
     bids: list[str] | None = None
     absolute_coordinates: list[tuple[float, float]] | None = None
     value: list | None = None
-
-
-def monkey_patch_to_python_code(obs, coordinates_multiplier: float = 1):
-    """
-    Return a monkey patched python action parser which converts normalized
-    coordinate inputs to unnormalized coordinates.
-
-    Copied from https://github.com/orby-ai-engineering/BrowserGym/blob/b0ad675572e01cac0d7255100112de0828877148/browsergym/core/src/browsergym/core/action/highlevel.py#L303
-    """
-    height, width = obs["screenshot"].shape[:2]
-
-    def to_python_code(self, action):
-        """
-        Converts the given high-level action string to browsergym-compatible python code.
-        Args:
-            action: the high-level action to parse.
-        Returns:
-            Executable python code that performs the action in a browsergym environment.
-        """
-        highlevel_code = action
-        local_parser = _build_highlevel_action_parser()
-        # do the actual parsing and convert each high-level action to
-        # the corresponding python function call
-        if self.strict:
-            function_calls = local_parser.parse_string(highlevel_code, parse_all=True)
-            function_calls = function_calls.as_list()
-        else:
-            function_calls = local_parser.search_string(highlevel_code)  # allow for multiple matches, skip anything in-between
-            function_calls = sum(function_calls.as_list(), [])  # unpack multiple matches
-
-        if not function_calls:
-            raise ValueError("Received an empty action.")
-        elif len(function_calls) > 1 and not self.multiaction:
-            raise ValueError("Received a multi-action, only single-actions are allowed.")
-
-        python_code = ""
-        # function definitions
-        python_code += self.python_includes
-        # function calls
-        for function_name, function_args in function_calls:
-            if function_name not in self.action_set:
-                raise NameError(f"Invalid action type '{function_name}'.")
-            # Modify float arguments by multiplying with viewport sizes
-            modified_args = []
-
-            # Unnormalize the coordinates for coord actions only
-            # https://github.com/ServiceNow/BrowserGym/blob/12aa5e506dbf76e269af11fb214467c2495d5c59/browsergym/core/src/browsergym/core/action/highlevel.py#L63
-            if (function_name.startswith("mouse_") or function_name == "scroll") and len(function_args) >= 2:
-                x = function_args[0]
-                y = function_args[1]
-                x *= width * coordinates_multiplier
-                y *= height * coordinates_multiplier
-                modified_args = [x, y] + function_args[2:]
-            else:
-                modified_args = function_args
-
-            python_code += function_name + "(" + ", ".join([repr(arg) for arg in modified_args]) + ")\n"
-
-        return python_code
-
-    return to_python_code
 
 
 def extract_content_by_tags(text: str, tags: list[str]) -> dict[str, str | None]:

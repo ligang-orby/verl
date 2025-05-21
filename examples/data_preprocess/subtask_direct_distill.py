@@ -3,20 +3,25 @@ Preprocess the subtask SVA v3 dataset to parquet format
 """
 
 import argparse
+import os
 from typing import Literal, TypedDict
 
 import boto3
-import pandas as pd
 import ray
+from datasets import Dataset, Sequence
+from datasets import Image as ImageData
 from PIL import Image
 from tqdm import tqdm
 
 from dependencies.protos.fm.action_data_pb2 import ActionData
 from dependencies.protos.fm.llm_data_pb2 import LLMInteraction
-
-from .utils import action_parsing_utils, image_utils, s3_utils
+from examples.data_preprocess.utils import action_parsing_utils, image_utils, s3_utils
 
 ray.init()
+try:
+    os.environ.pop("RAY_ADDRESS")
+except KeyError:
+    pass
 
 
 class PromptDict(TypedDict):
@@ -48,12 +53,12 @@ def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["
 
     # User prompt
     assert llm_interaction.llm_messages[1].role == "user", "User prompt should be the second message"
-    user_prompt_list = [llm_content.text if llm_content.text else "<image>" for llm_content in llm_interaction.llm_messages[1].llm_contents]
+    user_prompt_list = [llm_content.text if llm_content.text else "<image>\n" for llm_content in llm_interaction.llm_messages[1].llm_contents]
     user_prompt = "".join(user_prompt_list)
 
     # Images
     image_urls = [llm_content.image_url for llm_content in llm_interaction.llm_messages[1].llm_contents if llm_content.image_url]
-    images = [image_utils.base64_bytes_to_image(image_url) for image_url in image_urls]
+    images = [image_utils.convert_image_to_pil_image(image_url) for image_url in image_urls]
 
     # Ground truth
     if ability == "reward_model":
@@ -62,6 +67,8 @@ def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["
         ground_truth = action_parsing_utils.extract_content_by_tags(llm_interaction.response, ["thinking", "action"])
     else:
         raise ValueError(f"Invalid ability: {ability}")
+    for key in ground_truth.keys():
+        ground_truth[key] = ground_truth[key].strip()
 
     return system_prompt, user_prompt, images, ground_truth
 
@@ -163,23 +170,25 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
     """
     reward_model_data_list: list[VERLDataPoint] = []
     executor_data_list: list[VERLDataPoint] = []
+
     for pb_uri in pb_uris_batch:
         td = s3_utils.load_trajectory_data_from_s3(pb_uri)
 
         for idx, action in enumerate(td.actions):
-            reward_model_data_point, executor_data_point = convert_action_to_datapoints(action, idx)
-            reward_model_data_list.extend(reward_model_data_point)
-            if executor_data_point:
-                executor_data_list.extend(executor_data_point)
+            data_points = convert_action_to_datapoints(action, idx)
+            reward_model_data_list.append(data_points[0])
+            if data_points[1]:
+                executor_data_list.append(data_points[1])
 
-    reward_model_data_df = pd.DataFrame(reward_model_data_list)
-    executor_data_df = pd.DataFrame(executor_data_list)
+    reward_model_dataset = Dataset.from_list(reward_model_data_list)
+    executor_dataset = Dataset.from_list(executor_data_list)
+    reward_model_dataset = reward_model_dataset.cast_column("images", Sequence(ImageData()))
+    executor_dataset = executor_dataset.cast_column("images", Sequence(ImageData()))
 
-    s3_client = boto3.client("s3")
-    reward_model_output_path = f"{output_path}/reward_model/batch_{batch_idx}.parquet"
-    executor_output_path = f"{output_path}/executor/batch_{batch_idx}.parquet"
-    s3_utils.upload_df_to_s3_as_parquet(reward_model_data_df, reward_model_output_path, s3_client)
-    s3_utils.upload_df_to_s3_as_parquet(executor_data_df, executor_output_path, s3_client)
+    reward_model_output_path = f"{output_path.rstrip('/')}/reward_model/batch_{batch_idx}.parquet"
+    executor_output_path = f"{output_path.rstrip('/')}/executor/batch_{batch_idx}.parquet"
+    reward_model_dataset.to_parquet(reward_model_output_path)
+    executor_dataset.to_parquet(executor_output_path)
 
     return len(reward_model_data_list) + len(executor_data_list)
 
@@ -187,7 +196,7 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
 def main(input_path: str, output_path: str) -> None:
     s3_client = boto3.client("s3")
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
-    pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 100)]
+    pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 10)]
 
     tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
 
