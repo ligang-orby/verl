@@ -17,6 +17,7 @@ from tqdm import tqdm
 from utils import action_parsing_utils, image_utils, s3_utils
 
 ray.init()
+print(ray.available_resources())
 try:
     os.environ.pop("RAY_ADDRESS")
 except KeyError:
