@@ -123,3 +123,6 @@ ENV/
 logs
 log
 outputs
+
+# dependencies
+dependencies/protos/*/*

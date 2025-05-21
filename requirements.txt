@@ -1,4 +1,6 @@
 # requirements.txt records the full set of dependencies for development
+dependencies/protos
+
 accelerate
 boto3==1.38.19
 codetiming

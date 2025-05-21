@@ -10,12 +10,11 @@ import boto3
 import ray
 from datasets import Dataset, Sequence
 from datasets import Image as ImageData
+from fm.action_data_pb2 import ActionData
+from fm.llm_data_pb2 import LLMInteraction
 from PIL import Image
 from tqdm import tqdm
-
-from dependencies.protos.fm.action_data_pb2 import ActionData
-from dependencies.protos.fm.llm_data_pb2 import LLMInteraction
-from examples.data_preprocess.utils import action_parsing_utils, image_utils, s3_utils
+from utils import action_parsing_utils, image_utils, s3_utils
 
 ray.init()
 try:
