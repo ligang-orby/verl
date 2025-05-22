@@ -14,7 +14,10 @@ from fm.action_data_pb2 import ActionData
 from fm.llm_data_pb2 import LLMInteraction
 from PIL import Image
 from tqdm import tqdm
+
 from orby.subtask.utils import action_parsing_utils, image_utils, s3_utils
+
+VERL_IMAGE_TOKEN = "<image>\n"
 
 ray.init()
 print(ray.available_resources())
@@ -53,11 +56,11 @@ def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["
 
     # User prompt
     assert llm_interaction.llm_messages[1].role == "user", "User prompt should be the second message"
-    user_prompt_list = [llm_content.text if llm_content.text else "<image>\n" for llm_content in llm_interaction.llm_messages[1].llm_contents]
+    user_prompt_list = [llm_content.text if llm_content.text else VERL_IMAGE_TOKEN for llm_content in llm_interaction.llm_messages[1].llm_contents]
     # Keep only the last 4 <image> tags due to Qwen-VL-2.5's max context length
-    image_count = user_prompt_list.count("<image>\n")
+    image_count = user_prompt_list.count(VERL_IMAGE_TOKEN)
     if image_count > 4:
-        image_indices = [i for i, x in enumerate(user_prompt_list) if x == "<image>\n"]
+        image_indices = [i for i, x in enumerate(user_prompt_list) if x == VERL_IMAGE_TOKEN]
         indices_to_remove = image_indices[:-4]
         for idx in reversed(indices_to_remove):
             user_prompt_list.pop(idx)
@@ -206,7 +209,7 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
 def main(input_path: str, output_path: str) -> None:
     s3_client = boto3.client("s3")
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
-    pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 10)]
+    pb_uris_batches = [pb_uris[i : i + 200] for i in range(0, len(pb_uris), 200)]
 
     tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
 
