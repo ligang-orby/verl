@@ -1,5 +1,8 @@
 # requirements.txt records the full set of dependencies for development
+dependencies/protos
+
 accelerate
+boto3==1.38.19
 codetiming
 datasets
 dill
@@ -13,7 +16,9 @@ pyarrow>=15.0.0
 pybind11
 pylatexenc
 pre-commit
+qwen-vl-utils==0.0.11
 ray[default]
+s3fs==2025.5.0
 tensordict<=0.6.2
 torchdata
 transformers
