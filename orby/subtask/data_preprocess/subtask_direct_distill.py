@@ -14,7 +14,7 @@ from fm.action_data_pb2 import ActionData
 from fm.llm_data_pb2 import LLMInteraction
 from PIL import Image
 from tqdm import tqdm
-from utils import action_parsing_utils, image_utils, s3_utils
+from orby.subtask.utils import action_parsing_utils, image_utils, s3_utils
 
 ray.init()
 print(ray.available_resources())

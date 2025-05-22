@@ -1,5 +1,6 @@
+-e .
 dependencies/protos
 
-boto3
+datasets>=3.6.0
 qwen-vl-utils==0.0.11
-s3fs
+s3fs>=2025.5.0
