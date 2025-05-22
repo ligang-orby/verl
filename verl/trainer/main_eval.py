@@ -18,6 +18,7 @@ The input is a parquet file that contains N generated sequences and (optional) t
 """
 
 from collections import defaultdict
+import pprint
 
 import hydra
 import numpy as np
@@ -72,7 +73,7 @@ def process_item(reward_fn, data_source, response_lst, reward_data):
         try:
             mean_scores[name] = np.mean(score)
         except:
-            print(f"Error calculating mean for {name}")
+            pass
 
     return data_source, mean_scores
 
@@ -116,11 +117,11 @@ def main(config):
     metric_dict = {}
     for data_source, rewards in data_source_reward.items():
         rewards = pd.DataFrame(rewards)
-        rewards = rewards.mean(axis=-1)
+        rewards = rewards.mean()
         for k, v in rewards.items():
             metric_dict[f"test_score/{data_source}/{k}"] = v
 
-    print(metric_dict)
+    pprint.pprint(metric_dict)
 
 
 if __name__ == "__main__":
