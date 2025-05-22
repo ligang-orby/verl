@@ -52,6 +52,7 @@ def _create_dataloader(config, tokenizer, processor):
     Creates the dataloader.
     """
     dataset = create_rl_dataset(config.data.path, config.data, tokenizer, processor)
+    # return dataset
 
     dataloader = StatefulDataLoader(
         dataset=dataset,
@@ -101,22 +102,11 @@ def main_task(config):
         local_path, use_fast=True
     )  # used for multimodal LLM, could be none
 
-    dataloader = _create_dataloader(config, tokenizer, processor)
-    print(dataloader)
+    dataset = _create_dataloader(config, tokenizer, processor)
 
     if config.rollout.temperature == 0.0:
         assert config.data.n_samples == 1, "When temperature=0, n_samples must be 1."
     assert config.data.n_samples >= 1, "n_samples should always >= 1"
-
-    # read dataset. Note that the dataset should directly contain chat template format (e.g., a list of dictionary)
-    dataset = pd.read_parquet(config.data.path)
-    chat_lst = dataset[config.data.prompt_key].tolist()
-
-    chat_lst = [chat.tolist() for chat in chat_lst]
-
-    tokenizer.padding_side = "left"
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
 
     ray_cls_with_init = RayClassWithInitArgs(
         cls=ray.remote(ActorRolloutRefWorker), config=config, role="rollout"
@@ -131,78 +121,32 @@ def main_task(config):
 
     total_samples = len(dataset)
     config_batch_size = config.data.batch_size
-    num_batch = -(-total_samples // config_batch_size)
     output_lst = [[] for _ in range(config.data.n_samples)]
 
-    for test_data in dataloader:
-        test_batch = DataProto.from_single_dict(test_data)
-
-        # Store original inputs
-        input_ids = test_batch.batch["input_ids"]
+    batch_idx = 0
+    for batch_dict in dataset:
+        print(f"[{batch_idx + 1}] Start to process.")
+        data = DataProto.from_single_dict(batch_dict)
 
         batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
         non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
-        if "multi_modal_inputs" in test_batch.non_tensor_batch:
+        if "multi_modal_inputs" in data.non_tensor_batch:
             non_tensor_batch_keys_to_pop.extend(
                 ["multi_modal_data", "multi_modal_inputs"]
             )
-        if "raw_prompt" in test_batch.non_tensor_batch:
+        if "raw_prompt" in data.non_tensor_batch:
             non_tensor_batch_keys_to_pop.append("raw_prompt")
-        if "tools_kwargs" in test_batch.non_tensor_batch:
+        if "tools_kwargs" in data.non_tensor_batch:
             non_tensor_batch_keys_to_pop.append("tools_kwargs")
-        test_gen_batch = test_batch.pop(
+        data = data.pop(
             batch_keys=batch_keys_to_pop,
             non_tensor_batch_keys=non_tensor_batch_keys_to_pop,
         )
 
-        test_gen_batch.meta_info = {
-            "eos_token_id": tokenizer.eos_token_id,
-            "pad_token_id": tokenizer.pad_token_id,
-            "recompute_log_prob": False,
-            "do_sample": False,
-            "validate": True,
-        }
-        print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
-
-        # pad to be divisible by dp_size
-        batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, 1)
-        output_padded = wg.generate_sequences(batch_padded)
-
-        # unpad
-        output_gen_batch = unpad_dataproto(output_padded, pad_size=pad_size)
-        print("validation generation end")
-
-        # Store generated outputs
-        output_ids = output_gen_batch.batch["responses"]
-        output_texts = [
-            tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids
-        ]
-        print(output_texts)
-
-    """
-    for batch_idx in range(num_batch):
-        print(f"[{batch_idx + 1}/{num_batch}] Start to process.")
-        batch_chat_lst = chat_lst[batch_idx * config_batch_size : (batch_idx + 1) * config_batch_size]
-        inputs = tokenizer.apply_chat_template(
-            batch_chat_lst,
-            add_generation_prompt=True,
-            padding=True,
-            truncation=True,
-            max_length=config.rollout.prompt_length,
-            return_tensors="pt",
-            return_dict=True,
-            tokenize=True,
-        )
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"]
-        position_ids = compute_position_id_with_mask(attention_mask)
-        batch_dict = {"input_ids": input_ids, "attention_mask": attention_mask, "position_ids": position_ids}
-
-        data = DataProto.from_dict(batch_dict)
         data_padded, pad_size = pad_dataproto_to_divisor(data, wg.world_size)
 
         # START TO GENERATE FOR n_samples TIMES
-        print(f"[{batch_idx + 1}/{num_batch}] Start to generate.")
+        print(f"[{batch_idx + 1}] Start to generate.")
         for n_sample in range(config.data.n_samples):
             output_padded = wg.generate_sequences(data_padded)
             output = unpad_dataproto(output_padded, pad_size=pad_size)
@@ -211,25 +155,32 @@ def main_task(config):
             for i in range(len(output)):
                 data_item = output[i]
                 prompt_length = data_item.batch["prompts"].shape[-1]
-                valid_response_length = data_item.batch["attention_mask"][prompt_length:].sum()
-                valid_response_ids = data_item.batch["responses"][:valid_response_length]
-                response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
+                valid_response_length = data_item.batch["attention_mask"][
+                    prompt_length:
+                ].sum()
+                valid_response_ids = data_item.batch["responses"][
+                    :valid_response_length
+                ]
+                response_str = tokenizer.decode(
+                    valid_response_ids, skip_special_tokens=True
+                )
                 output_texts.append(response_str)
 
             output_lst[n_sample].extend(output_texts)
+        batch_idx += 1
 
     # convert output_lst from (n_samples, n_data) to (n_data, n_sampels)
     output_lst = np.array(output_lst, dtype=object)
     output_lst = np.transpose(output_lst, axes=(1, 0)).tolist()
 
     # add to the data frame
+    dataset = pd.read_parquet(config.data.path)
     dataset["responses"] = output_lst
 
     # write to a new parquet
     output_dir = os.path.dirname(config.data.output_path)
     makedirs(output_dir, exist_ok=True)
     dataset.to_parquet(config.data.output_path)
-    """
 
 
 if __name__ == "__main__":

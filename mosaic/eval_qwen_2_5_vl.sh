@@ -2,6 +2,7 @@ MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct
 DATA_PATH=~/data/uground
 REWARD_FILE=verl/utils/reward_score/ui_uground.py
 REWARD_FN=reward_func
+OUTPUT_FILE=test-output-1.parquet
 
 # Generation
 python3 -m verl.trainer.main_generation \
@@ -10,11 +11,12 @@ python3 -m verl.trainer.main_generation \
     data.path=$DATA_PATH/test.parquet \
     data.prompt_key=prompt \
     data.batch_size=1024 \
-    data.n_samples=8 \
-    data.output_path=$DATA_PATH/test-output-8.parquet \
+    data.max_prompt_length=7936 \
+    data.n_samples=1 \
+    data.output_path=$DATA_PATH/$OUTPUT_FILE \
     model.path=$MODEL_PATH \
-    rollout.temperature=0.6 \
-    rollout.top_p=0.95 \
+    rollout.temperature=0 \
+    rollout.top_p=1.0 \
     rollout.prompt_length=7936 \
     rollout.response_length=256 \
     rollout.tensor_model_parallel_size=1 \
@@ -23,7 +25,7 @@ python3 -m verl.trainer.main_generation \
 
 # Evaluation
 python3 -m verl.trainer.main_eval \
-    data.path=$DATA_PATH/test-output-8.parquet \
+    data.path=$DATA_PATH/$OUTPUT_FILE \
     data.prompt_key=prompt \
     data.response_key=responses \
     custom_reward_function.path=$REWARD_FILE \
