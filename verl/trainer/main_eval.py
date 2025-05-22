@@ -65,8 +65,16 @@ def get_custom_reward_fn(config):
 def process_item(reward_fn, data_source, response_lst, reward_data):
     ground_truth = reward_data["ground_truth"]
     score_lst = [reward_fn(data_source, r, ground_truth) for r in response_lst]
-    score_lst = [s["score"] for s in score_lst]
-    return data_source, np.mean(score_lst)
+    df = pd.DataFrame(score_lst)
+
+    mean_scores = {}
+    for name, score in df.items():
+        try:
+            mean_scores[name] = np.mean(score)
+        except:
+            print(f"Error calculating mean for {name}")
+
+    return data_source, mean_scores
 
 
 @hydra.main(config_path="config", config_name="evaluation", version_base=None)
@@ -101,13 +109,16 @@ def main(config):
             # Use ray.wait to get completed tasks
             done_ids, remote_tasks = ray.wait(remote_tasks)
             for result_id in done_ids:
-                data_source, score = ray.get(result_id)
-                data_source_reward[data_source].append(score)
+                data_source, mean_scores = ray.get(result_id)
+                data_source_reward[data_source].append(mean_scores)
                 pbar.update(1)
 
     metric_dict = {}
     for data_source, rewards in data_source_reward.items():
-        metric_dict[f"test_score/{data_source}"] = np.mean(rewards)
+        rewards = pd.DataFrame(rewards)
+        rewards = rewards.mean(axis=-1)
+        for k, v in rewards.items():
+            metric_dict[f"test_score/{data_source}/{k}"] = v
 
     print(metric_dict)
 
