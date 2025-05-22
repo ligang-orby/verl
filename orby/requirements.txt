@@ -1,0 +1,5 @@
+dependencies/protos
+
+boto3
+qwen-vl-utils==0.0.11
+s3fs
