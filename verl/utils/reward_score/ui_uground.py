@@ -194,36 +194,38 @@ class UIGroundRewardScorer:
 
         details = {
             "score": overall_score,
-            "format_check": {
-                "has_thinking": has_thinking,
-                "has_answer": has_answer,
-                "score": format_score,
-            },
-            "action_type_check": {
-                "predicted": pred_action_type,
-                "ground_truth": gt_action_type,
-                "score": action_score,
-            },
+            "has_thinking": has_thinking,
+            "has_answer": has_answer,
+            "format_score": format_score,
+            "action_type_predicted": str(pred_action_type),
+            "action_type_ground_truth": str(gt_action_type),
+            "action_type_score": action_score,
         }
 
         if gt_action_type == "keyboard_type":
-            details["arg_check"] = {
-                "predicted": pred_content,
-                "ground_truth": gt_content,
-                "score": coord_score,
-            }
+            details.update(
+                {
+                    "arg_predicted": pred_content,
+                    "arg_ground_truth": gt_content,
+                    "arg_score": coord_score,
+                }
+            )
         elif gt_action_type == "scroll":
-            details["arg_check"] = {
-                "predicted": (pred_x, pred_y),
-                "ground_truth": (gt_x, gt_y),
-                "score": coord_score,
-            }
+            details.update(
+                {
+                    "arg_predicted": str((pred_x, pred_y)),
+                    "arg_ground_truth": str((gt_x, gt_y)),
+                    "arg_score": coord_score,
+                }
+            )
         else:
-            details["arg_check"] = {
-                "predicted": (pred_x, pred_y),
-                "ground_truth_bbox": ground_truth.get("bbox"),
-                "score": coord_score,
-            }
+            details.update(
+                {
+                    "arg_predicted": str((pred_x, pred_y)),
+                    "arg_ground_truth": str(ground_truth.get("bbox")),
+                    "arg_score": coord_score,
+                }
+            )
 
         return details
 
@@ -247,3 +249,12 @@ def compute_score(prediction: str, ground_truth: Dict) -> Dict:
     scorer = UIGroundRewardScorer()
     result = scorer.score(prediction, ground_truth)
     return result
+
+
+def reward_func(data_source, solution_str, ground_truth, extra_info=None):
+    if data_source in ["uground"]:
+        from verl.utils.reward_score import ui_uground
+
+        return ui_uground.compute_score(solution_str, ground_truth)
+    else:
+        raise NotImplementedError

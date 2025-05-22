@@ -10,6 +10,9 @@
 # Dataset format
 - VERL can read parquet files and we just need to make sure each record has the required features. Check [uground.py](/examples/data_preprocess/uground.py) to see how we convert the dataset with caveats like adjusting bbox coordinates for resized images.
 
+# Offline generation and eval
+- Use [eval_qwen_2_5_vl.sh](/mosaic/eval_qwen_2_5_vl.sh) to run model inference on a test set and evaluate the predictions using customized rule-based reward.
+
 # TODO
 - Tune batch size, max seq length, etc to obtain best GPU utilization and performance.
 - Multinode training (if needed).
