@@ -1,5 +1,7 @@
 MODEL_PATH=Qwen/Qwen2.5-VL-7B-Instruct
-DATA_PATH=~/datasets/uground
+DATA_PATH=~/data/uground
+REWARD_FILE=verl/utils/reward_score/ui_uground.py
+REWARD_FN=reward_func
 
 # Generation
 python3 -m verl.trainer.main_generation \
@@ -24,5 +26,5 @@ python3 -m verl.trainer.main_eval \
     data.path=$DATA_PATH/test-output-8.parquet \
     data.prompt_key=prompt \
     data.response_key=responses \
-    custom_reward_function.path=verl/utils/reward_score/ui_uground.py \
-    custom_reward_function.name=compute_score
+    custom_reward_function.path=$REWARD_FILE \
+    custom_reward_function.name=$REWARD_FN

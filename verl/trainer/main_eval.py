@@ -26,12 +26,13 @@ import ray
 from tqdm import tqdm
 
 from verl.utils.fs import copy_to_local
+from functools import partial
 
 
+# Copied from recipe/r1/main_eval.py
 def get_custom_reward_fn(config):
     import importlib.util
     import os
-    import sys
 
     reward_fn_config = config.get("custom_reward_function") or {}
     file_path = reward_fn_config.get("path")
@@ -44,30 +45,27 @@ def get_custom_reward_fn(config):
     spec = importlib.util.spec_from_file_location("custom_module", file_path)
     module = importlib.util.module_from_spec(spec)
     try:
-        sys.modules["custom_module"] = module
         spec.loader.exec_module(module)
     except Exception as e:
         raise RuntimeError(f"Error loading module from '{file_path}'") from e
 
     function_name = reward_fn_config.get("name")
+
     if not hasattr(module, function_name):
-        raise AttributeError(f"Reward function '{function_name}' not found in '{file_path}'.")
+        raise AttributeError(
+            f"Reward function '{function_name}' not found in '{file_path}'."
+        )
 
     print(f"using customized reward function '{function_name}' from '{file_path}'")
-    raw_fn = getattr(module, function_name)
 
-    reward_kwargs = dict(reward_fn_config.get("reward_kwargs", {}))
-
-    def wrapped_fn(*args, **kwargs):
-        return raw_fn(*args, **kwargs, **reward_kwargs)
-
-    return wrapped_fn
+    return getattr(module, function_name)
 
 
 @ray.remote
 def process_item(reward_fn, data_source, response_lst, reward_data):
     ground_truth = reward_data["ground_truth"]
     score_lst = [reward_fn(data_source, r, ground_truth) for r in response_lst]
+    score_lst = [s["score"] for s in score_lst]
     return data_source, np.mean(score_lst)
 
 
@@ -90,7 +88,12 @@ def main(config):
     compute_score = get_custom_reward_fn(config)
 
     # Create remote tasks
-    remote_tasks = [process_item.remote(compute_score, data_sources[i], responses[i], reward_model_data[i]) for i in range(total)]
+    remote_tasks = [
+        process_item.remote(
+            compute_score, data_sources[i], responses[i], reward_model_data[i]
+        )
+        for i in range(total)
+    ]
 
     # Process results as they come in
     with tqdm(total=total) as pbar:
