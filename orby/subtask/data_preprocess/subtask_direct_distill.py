@@ -209,7 +209,7 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
 def main(input_path: str, output_path: str) -> None:
     s3_client = boto3.client("s3")
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
-    pb_uris_batches = [pb_uris[i : i + 200] for i in range(0, len(pb_uris), 200)]
+    pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 10)]
 
     tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
 
