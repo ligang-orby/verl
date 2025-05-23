@@ -204,8 +204,8 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
     reward_model_dataset = reward_model_dataset.cast_column("images", Sequence(ImageData()))
     executor_dataset = executor_dataset.cast_column("images", Sequence(ImageData()))
 
-    reward_model_output_path = f"{output_path.rstrip('/')}/reward_model/batch_{batch_idx}.parquet"
-    executor_output_path = f"{output_path.rstrip('/')}/executor/batch_{batch_idx}.parquet"
+    reward_model_output_path = f"{output_path.rstrip('/')}/reward_model_{batch_idx}.parquet"
+    executor_output_path = f"{output_path.rstrip('/')}/executor_{batch_idx}.parquet"
     reward_model_dataset.to_parquet(reward_model_output_path)
     executor_dataset.to_parquet(executor_output_path)
 
