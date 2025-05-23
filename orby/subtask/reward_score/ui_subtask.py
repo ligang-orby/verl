@@ -263,3 +263,12 @@ def compute_score(prediction: str, ground_truth: dict) -> dict:
     scorer = UISubtaskRewardScorer()
     result = scorer.score(prediction, ground_truth)
     return result
+
+
+def reward_func(data_source, solution_str, ground_truth, extra_info=None):
+    if data_source == "subtask_direct_distill":
+        from orby.subtask.reward_score import ui_subtask
+
+        return ui_subtask.compute_score(solution_str, ground_truth)
+    else:
+        raise NotImplementedError
