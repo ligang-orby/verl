@@ -19,8 +19,3 @@ pip3 install -e .[vllm]
 # aws s3 cp s3://orby-osu-va/mds_datasets/Q42024_Intake_Format/ActIO-ActionDescription/parquet/dev.parquet ~/data/uground/raw/dev.parquet
 # python examples/data_preprocess/uground.py --input_file=~/data/uground/raw/dev.parquet --split=train
 # python examples/data_preprocess/uground.py --input_file=~/data/uground/raw/dev.parquet --split=test
-
-# Download the subtask direct distill dataset
-mkdir -p ~/data/subtask_direct_distill/mix/train/ ~/data/subtask_direct_distill/mix/test/
-aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/test/ ~/data/subtask_direct_distill/mix/test/ --recursive
-aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/ ~/data/subtask_direct_distill/mix/train/ --recursive
