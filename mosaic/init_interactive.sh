@@ -1,5 +1,5 @@
-git config --global user.email "ligang@orby.ai"
-git config --global user.name "Gang Li"
+git config --global user.email "cheng@orby.ai"
+git config --global user.name "Cheng Chang"
 
 apt update
 apt install -y emacs
