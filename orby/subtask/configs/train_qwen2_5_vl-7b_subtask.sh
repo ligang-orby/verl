@@ -6,8 +6,8 @@ ENGINE=${1:-vllm}
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=["$HOME/data/subtask_direct_distill/mix/train/executor/", "$HOME/data/subtask_direct_distill/mix/train/reward_model/"] \
-    data.val_files=["$HOME/data/subtask_direct_distill/mix/test/executor/", "$HOME/data/subtask_direct_distill/mix/test/reward_model/"] \
+    data.train_files=["$HOME/data/subtask_direct_distill/mix/train/executor.parquet", "$HOME/data/subtask_direct_distill/mix/train/reward_model.parquet"] \
+    data.val_files=["$HOME/data/subtask_direct_distill/mix/test/executor.parquet", "$HOME/data/subtask_direct_distill/mix/test/reward_model.parquet"] \
     data.train_batch_size=64 \
     data.max_prompt_length=7680 \
     data.max_response_length=512 \

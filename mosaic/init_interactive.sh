@@ -21,11 +21,9 @@ pip3 install -e .[vllm]
 # python examples/data_preprocess/uground.py --input_file=~/data/uground/raw/dev.parquet --split=test
 
 # Download the subtask direct distill dataset
-mkdir -p ~/data/subtask_direct_distill/mix/train/executor/
-mkdir -p ~/data/subtask_direct_distill/mix/test/executor/
-mkdir -p ~/data/subtask_direct_distill/mix/train/reward_model/
-mkdir -p ~/data/subtask_direct_distill/mix/test/reward_model/
-aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/test/executor/ ~/data/subtask_direct_distill/mix/test/executor/ --recursive
-aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/test/reward_model/ ~/data/subtask_direct_distill/mix/test/reward_model/ --recursive
-aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/executor/ ~/data/subtask_direct_distill/mix/train/executor/ --recursive
-aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/reward_model/ ~/data/subtask_direct_distill/mix/train/reward_model/ --recursive
+mkdir -p ~/data/subtask_direct_distill/mix/train/
+mkdir -p ~/data/subtask_direct_distill/mix/test/
+aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/test/executor.parquet ~/data/subtask_direct_distill/mix/test/executor.parquet
+aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/test/reward_model.parquet ~/data/subtask_direct_distill/mix/test/reward_model.parquet
+aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/executor.parquet ~/data/subtask_direct_distill/mix/train/executor.parquet
+aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/reward_model.parquet ~/data/subtask_direct_distill/mix/train/reward_model.parquet
