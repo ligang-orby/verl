@@ -21,6 +21,7 @@ from orby.subtask.utils import action_parsing_utils, image_utils, s3_utils
 VERL_IMAGE_TOKEN = "<image>\n"
 DATA_SOURCE = "subtask_direct_distill"
 GT_STYLE = "rule"
+MAX_IMAGE_COUNT = 3
 
 ray.init()
 print(ray.available_resources())
@@ -60,11 +61,11 @@ def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["
     # User prompt
     assert llm_interaction.llm_messages[1].role == "user", "User prompt should be the second message"
     user_prompt_list = [llm_content.text if llm_content.text else VERL_IMAGE_TOKEN for llm_content in llm_interaction.llm_messages[1].llm_contents]
-    # Keep only the last 4 <image> tags due to Qwen-VL-2.5's max context length
+    # Keep only the last MAX_IMAGE_COUNT <image> tags due to Qwen-VL-2.5's max context length
     image_count = user_prompt_list.count(VERL_IMAGE_TOKEN)
-    if image_count > 4:
+    if image_count > MAX_IMAGE_COUNT:
         image_indices = [i for i, x in enumerate(user_prompt_list) if x == VERL_IMAGE_TOKEN]
-        image_indices_to_remove = image_indices[:-4]
+        image_indices_to_remove = image_indices[:-MAX_IMAGE_COUNT]
         # Each action and thinking history is right under each image
         step_indices_to_remove = [i + 1 for i in image_indices_to_remove]
         indices_to_remove = sorted(set(image_indices_to_remove + step_indices_to_remove))
@@ -79,9 +80,9 @@ def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["
 
     # Images
     image_urls = [llm_content.image_url for llm_content in llm_interaction.llm_messages[1].llm_contents if llm_content.image_url]
-    # Keep only the last 4 images due to Qwen-VL-2.5's max context length
-    if len(image_urls) > 4:
-        image_urls = image_urls[-4:]
+    # Keep only the last MAX_IMAGE_COUNT images due to Qwen-VL-2.5's max context length
+    if len(image_urls) > MAX_IMAGE_COUNT:
+        image_urls = image_urls[-MAX_IMAGE_COUNT:]
     images = [image_utils.convert_image_to_pil_image(image_url) for image_url in image_urls]
 
     # Ground truth
