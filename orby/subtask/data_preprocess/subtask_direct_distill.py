@@ -64,7 +64,15 @@ def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["
     image_count = user_prompt_list.count(VERL_IMAGE_TOKEN)
     if image_count > 4:
         image_indices = [i for i, x in enumerate(user_prompt_list) if x == VERL_IMAGE_TOKEN]
-        indices_to_remove = image_indices[:-4]
+        image_indices_to_remove = image_indices[:-4]
+        # Each action and thinking history is right under each image
+        step_indices_to_remove = [i + 1 for i in image_indices_to_remove]
+        indices_to_remove = sorted(set(image_indices_to_remove + step_indices_to_remove))
+
+        # Heuristically, we need to remove the first "Step 1:" and replace it with the first step not removed
+        first_step_not_removed = len(image_indices_to_remove) + 1
+        user_prompt_list[0] = user_prompt_list[0].replace("Step 1:\n", f"Step {first_step_not_removed}:\n")
+
         for idx in reversed(indices_to_remove):
             user_prompt_list.pop(idx)
     user_prompt = "".join(user_prompt_list)
