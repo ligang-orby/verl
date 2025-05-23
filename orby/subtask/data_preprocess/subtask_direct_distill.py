@@ -18,6 +18,8 @@ from tqdm import tqdm
 from orby.subtask.utils import action_parsing_utils, image_utils, s3_utils
 
 VERL_IMAGE_TOKEN = "<image>\n"
+DATA_SOURCE = "subtask_direct_distill"
+GT_STYLE = "rule"
 
 ray.init()
 print(ray.available_resources())
@@ -33,12 +35,12 @@ class PromptDict(TypedDict):
 
 
 class RewardModelDict(TypedDict):
-    style: str = "rule"
+    style: str
     ground_truth: dict
 
 
 class VERLDataPoint(TypedDict):
-    data_source: str = "subtask_direct_distill"
+    data_source: str
     prompt: list[PromptDict]
     images: list[Image.Image]
     ability: str
@@ -117,6 +119,7 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataP
     }
 
     reward_model_data_point = VERLDataPoint(
+        data_source=DATA_SOURCE,
         prompt=[
             PromptDict(
                 role="user",  # Note: this is NOT a mistake. We use user prompts for both to conform with vanilla Qwen-VL-2.5
@@ -130,6 +133,7 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataP
         images=reward_model_images,
         ability=ability,
         reward_model=RewardModelDict(
+            style=GT_STYLE,
             ground_truth=reward_model_ground_truth,
         ),
         extra_info=extra_info,
@@ -148,6 +152,7 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataP
         ) = get_llm_interaction_data(executor_interaction, ability)
 
         executor_data_point = VERLDataPoint(
+            data_source=DATA_SOURCE,
             prompt=[
                 PromptDict(
                     role="user",
@@ -161,6 +166,7 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataP
             images=executor_images,
             ability=ability,
             reward_model=RewardModelDict(
+                style=GT_STYLE,
                 ground_truth=executor_ground_truth,
             ),
             extra_info=extra_info,

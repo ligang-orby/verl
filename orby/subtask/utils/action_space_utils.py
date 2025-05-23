@@ -25,8 +25,8 @@ class ActionInfo(TypedDict):
         "type",
         "wait",
     ]
-    coordinates: list[tuple[float, float]] | None = None
-    args: dict[str, str] | None = None
+    coordinates: list[tuple[float, float]] | None
+    args: dict[str, str] | None
 
 
 def get_action_info(action: str) -> ActionInfo:
@@ -47,6 +47,7 @@ def click(x: float, y: float, button: Literal["left", "right"] = "left", double:
 def complete(answer: str = "", infeasible_reason: str = "") -> ActionInfo:
     return ActionInfo(
         action_type="complete",
+        coordinates=None,
         args={"answer": str(answer), "infeasible_reason": str(infeasible_reason)},
     )
 
@@ -55,6 +56,7 @@ def drag_and_release(x1: float, y1: float, x2: float, y2: float) -> ActionInfo:
     return ActionInfo(
         action_type="drag_and_release",
         coordinates=[(x1, y1), (x2, y2)],
+        args=None,
     )
 
 
@@ -62,12 +64,14 @@ def hover(x: float, y: float) -> ActionInfo:
     return ActionInfo(
         action_type="hover",
         coordinates=[(x, y)],
+        args=None,
     )
 
 
 def key_press(keys: list[str]) -> ActionInfo:
     return ActionInfo(
         action_type="key_press",
+        coordinates=None,
         args={"keys": str(keys)},
     )
 
@@ -94,5 +98,6 @@ def type(x: float, y: float, text: str) -> ActionInfo:
 def wait(ms: int = 1000) -> ActionInfo:
     return ActionInfo(
         action_type="wait",
+        coordinates=None,
         args={"ms": str(ms)},
     )
