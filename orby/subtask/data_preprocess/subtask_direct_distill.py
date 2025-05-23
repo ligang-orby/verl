@@ -4,6 +4,7 @@ Preprocess the subtask SVA v3 dataset to parquet format
 
 import argparse
 import os
+import time
 from typing import Literal, TypedDict
 
 import boto3
@@ -203,6 +204,7 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
 
 
 def main(input_path: str, output_path: str) -> None:
+    start_time = time.time()
     s3_client = boto3.client("s3")
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
     pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 10)]
@@ -233,6 +235,8 @@ def main(input_path: str, output_path: str) -> None:
     print(f"Number of reward model data points created: {reward_model_dataset.num_rows}")
     print(f"Number of executor data points created: {executor_dataset.num_rows}")
     print(f"Total number of data points created: {executor_dataset.num_rows + reward_model_dataset.num_rows}")
+    print(f"Took {(time.time() - start_time) / 60:.1f} minutes")
+    print("Done!")
 
 
 if __name__ == "__main__":
