@@ -177,16 +177,16 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataP
 
 
 @ray.remote
-def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str) -> tuple[list[VERLDataPoint], list[VERLDataPoint]]:
+def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str) -> int:
     """
-    Process a batch of protobuf URIs and output the reward model and executor data points.
+    Process a batch of protobuf URIs and save the output to a parquet file.
 
     Args:
         pb_uris_batch (list[str]): A list of protobuf URIs.
         output_path (str): The output path to upload the parquet file.
 
     Returns:
-        tuple[list[VERLDataPoint], list[VERLDataPoint]]: The reward model and executor data points.
+        int: The number of data points created in the parquet file.
     """
     reward_model_data_list: list[VERLDataPoint] = []
     executor_data_list: list[VERLDataPoint] = []
@@ -200,7 +200,17 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
             if data_points[1]:
                 executor_data_list.append(data_points[1])
 
-    return reward_model_data_list, executor_data_list
+    reward_model_dataset = Dataset.from_list(reward_model_data_list)
+    executor_dataset = Dataset.from_list(executor_data_list)
+    reward_model_dataset = reward_model_dataset.cast_column("images", Sequence(ImageData()))
+    executor_dataset = executor_dataset.cast_column("images", Sequence(ImageData()))
+
+    reward_model_output_path = f"{output_path.rstrip('/')}/reward_model/reward_model_{batch_idx:04d}.parquet"
+    executor_output_path = f"{output_path.rstrip('/')}/executor/executor_{batch_idx:04d}.parquet"
+    reward_model_dataset.to_parquet(reward_model_output_path)
+    executor_dataset.to_parquet(executor_output_path)
+
+    return len(reward_model_data_list) + len(executor_data_list)
 
 
 def main(input_path: str, output_path: str) -> None:
@@ -211,30 +221,17 @@ def main(input_path: str, output_path: str) -> None:
 
     tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
 
-    reward_model_data_points = []
-    executor_data_points = []
     pbar = tqdm(total=len(tasks), desc="Processing batches")
+    num_data_points = []
     while tasks:
         done_id, tasks = ray.wait(tasks, num_returns=1)
-        reward_model_data_list, executor_data_list = ray.get(done_id[0])
-        reward_model_data_points.extend(reward_model_data_list)
-        executor_data_points.extend(executor_data_list)
+        result = ray.get(done_id[0])
+        num_data_points.append(result)
         pbar.update(1)
 
-    reward_model_dataset = Dataset.from_list(reward_model_data_points)
-    executor_dataset = Dataset.from_list(executor_data_points)
-    reward_model_dataset = reward_model_dataset.cast_column("images", Sequence(ImageData()))
-    executor_dataset = executor_dataset.cast_column("images", Sequence(ImageData()))
-
-    reward_model_output_path = f"{output_path.rstrip('/')}/reward_model.parquet"
-    executor_output_path = f"{output_path.rstrip('/')}/executor.parquet"
-    reward_model_dataset.to_parquet(reward_model_output_path)
-    executor_dataset.to_parquet(executor_output_path)
-
     pbar.close()
-    print(f"Number of reward model data points created: {reward_model_dataset.num_rows}")
-    print(f"Number of executor data points created: {executor_dataset.num_rows}")
-    print(f"Total number of data points created: {executor_dataset.num_rows + reward_model_dataset.num_rows}")
+
+    print(f"Total number of data points (reward model + executor) created: {sum(num_data_points)}")
     print(f"Took {(time.time() - start_time) / 60:.1f} minutes")
     print("Done!")
 
