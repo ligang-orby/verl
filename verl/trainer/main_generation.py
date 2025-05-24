@@ -38,13 +38,12 @@ from verl.single_controller.ray import (
     RayResourcePool,
     RayWorkerGroup,
 )
-from verl.utils import hf_tokenizer, hf_processor
+from verl.trainer.main_ppo import create_rl_dataset
+from verl.utils import hf_processor, hf_tokenizer
+from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
 from verl.utils.fs import copy_to_local
 from verl.utils.hdfs_io import makedirs
-from verl.utils.model import compute_position_id_with_mask
 from verl.workers.fsdp_workers import ActorRolloutRefWorker
-from verl.utils.dataset.rl_dataset import collate_fn as default_collate_fn
-from verl.trainer.main_ppo import create_rl_dataset
 
 
 def _create_dataloader(config, tokenizer, processor):
@@ -52,7 +51,6 @@ def _create_dataloader(config, tokenizer, processor):
     Creates the dataloader.
     """
     dataset = create_rl_dataset(config.data.path, config.data, tokenizer, processor)
-    # return dataset
 
     dataloader = StatefulDataLoader(
         dataset=dataset,
@@ -79,9 +77,7 @@ def run_generation(config) -> None:
     if not ray.is_initialized():
         # this is for local ray cluster
         ray.init(
-            runtime_env={
-                "env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN"}
-            },
+            runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN"}},
             num_cpus=config.ray_init.num_cpus,
         )
 
@@ -90,17 +86,13 @@ def run_generation(config) -> None:
 
 @ray.remote(num_cpus=1)
 def main_task(config):
-    pprint(
-        OmegaConf.to_container(config, resolve=True)
-    )  # resolve=True will eval symbol values
+    pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
     OmegaConf.resolve(config)
 
     local_path = copy_to_local(config.model.path)
     trust_remote_code = config.data.get("trust_remote_code", False)
     tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code)
-    processor = hf_processor(
-        local_path, use_fast=True
-    )  # used for multimodal LLM, could be none
+    processor = hf_processor(local_path, use_fast=True)  # used for multimodal LLM, could be none
 
     dataset = _create_dataloader(config, tokenizer, processor)
 
@@ -108,19 +100,11 @@ def main_task(config):
         assert config.data.n_samples == 1, "When temperature=0, n_samples must be 1."
     assert config.data.n_samples >= 1, "n_samples should always >= 1"
 
-    ray_cls_with_init = RayClassWithInitArgs(
-        cls=ray.remote(ActorRolloutRefWorker), config=config, role="rollout"
-    )
-    resource_pool = RayResourcePool(
-        process_on_nodes=[config.trainer.n_gpus_per_node] * config.trainer.nnodes
-    )
-    wg = RayWorkerGroup(
-        resource_pool=resource_pool, ray_cls_with_init=ray_cls_with_init
-    )
+    ray_cls_with_init = RayClassWithInitArgs(cls=ray.remote(ActorRolloutRefWorker), config=config, role="rollout")
+    resource_pool = RayResourcePool(process_on_nodes=[config.trainer.n_gpus_per_node] * config.trainer.nnodes)
+    wg = RayWorkerGroup(resource_pool=resource_pool, ray_cls_with_init=ray_cls_with_init)
     wg.init_model()
 
-    total_samples = len(dataset)
-    config_batch_size = config.data.batch_size
     output_lst = [[] for _ in range(config.data.n_samples)]
 
     batch_idx = 0
@@ -131,9 +115,7 @@ def main_task(config):
         batch_keys_to_pop = ["input_ids", "attention_mask", "position_ids"]
         non_tensor_batch_keys_to_pop = ["raw_prompt_ids"]
         if "multi_modal_inputs" in data.non_tensor_batch:
-            non_tensor_batch_keys_to_pop.extend(
-                ["multi_modal_data", "multi_modal_inputs"]
-            )
+            non_tensor_batch_keys_to_pop.extend(["multi_modal_data", "multi_modal_inputs"])
         if "raw_prompt" in data.non_tensor_batch:
             non_tensor_batch_keys_to_pop.append("raw_prompt")
         if "tools_kwargs" in data.non_tensor_batch:
@@ -155,15 +137,9 @@ def main_task(config):
             for i in range(len(output)):
                 data_item = output[i]
                 prompt_length = data_item.batch["prompts"].shape[-1]
-                valid_response_length = data_item.batch["attention_mask"][
-                    prompt_length:
-                ].sum()
-                valid_response_ids = data_item.batch["responses"][
-                    :valid_response_length
-                ]
-                response_str = tokenizer.decode(
-                    valid_response_ids, skip_special_tokens=True
-                )
+                valid_response_length = data_item.batch["attention_mask"][prompt_length:].sum()
+                valid_response_ids = data_item.batch["responses"][:valid_response_length]
+                response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
                 output_texts.append(response_str)
 
             output_lst[n_sample].extend(output_texts)
@@ -179,7 +155,8 @@ def main_task(config):
 
     # write to a new parquet
     output_dir = os.path.dirname(config.data.output_path)
-    makedirs(output_dir, exist_ok=True)
+    if output_dir != "":
+        makedirs(output_dir, exist_ok=True)
     dataset.to_parquet(config.data.output_path)
 
 
