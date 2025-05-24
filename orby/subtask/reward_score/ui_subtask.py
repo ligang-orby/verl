@@ -201,8 +201,7 @@ class UISubtaskRewardScorer:
         try:
             pred_action_info = get_action_info(pred_dict["action"])
         except Exception as e:
-            # If the action is not in the action space, we should not penalize the model
-            # and exit early
+            # If the action is not in the action space, we should penalize the model and exit early
             print(f"Detect an action not in the action space: {e}")
             score = format_score * self.executor_weights["format"] + thinking_score * self.executor_weights["thinking"]
             details["action_in_action_space"] = 0
