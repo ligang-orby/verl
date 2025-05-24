@@ -16,17 +16,17 @@ class UISubtaskRewardScorer:
     def __init__(self):
         super().__init__()
         self.reward_model_weights = {
-            "format": 0.2,
-            "reasoning": 0.2,
-            "should_end": 0.2,
-            "goal_achieved": 0.2,
+            "format": 0.1,
+            "reasoning": 0.1,
+            "should_end": 0.3,
+            "goal_achieved": 0.3,
             "answer": 0.2,
         }
         self.executor_weights = {
-            "format": 0.2,
-            "thinking": 0.2,
-            "action_type": 0.2,
-            "coordinates": 0.2,
+            "format": 0.1,
+            "thinking": 0.1,
+            "action_type": 0.1,
+            "coordinates": 0.5,
             "action_args": 0.2,
         }
         self.reward_model_tags = ["reasoning", "should_end", "goal_achieved", "answer"]
