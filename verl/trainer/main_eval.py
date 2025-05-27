@@ -106,7 +106,6 @@ def main(config):
                 data_source_reward[data_source].append(mean_scores)
                 pbar.update(1)
 
-    pprint.pprint(f"data_source_reward: {data_source_reward}")
     metric_dict = {}
     for data_source, rewards in data_source_reward.items():
         rewards = pd.DataFrame(rewards)
