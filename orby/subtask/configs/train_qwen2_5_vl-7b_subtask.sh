@@ -6,8 +6,8 @@ ENGINE=${1:-vllm}
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files=["$HOME/data/subtask_direct_distill/mix/train/executor.parquet", "$HOME/data/subtask_direct_distill/mix/train/reward_model.parquet"] \
-    data.val_files=["$HOME/data/subtask_direct_distill/mix/test/executor.parquet", "$HOME/data/subtask_direct_distill/mix/test/reward_model.parquet"] \
+    data.train_files="[\"$HOME/data/subtask_direct_distill/mix/train/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/train/reward_model.parquet\"]" \
+    data.val_files="[\"$HOME/data/subtask_direct_distill/mix/test/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/test/reward_model.parquet\"]" \
     data.train_batch_size=64 \
     data.max_prompt_length=7680 \
     data.max_response_length=512 \
@@ -38,6 +38,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.free_cache_engine=True \
     actor_rollout_ref.rollout.n=4 \
     actor_rollout_ref.rollout.max_model_len=8192 \
+    +actor_rollout_ref.rollout.limit_images=3 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=8192 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
