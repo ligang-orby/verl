@@ -61,7 +61,7 @@ class UISubtaskRewardScorer:
         Returns:
             Dictionary containing:
                 - score: Overall score (0-1)
-                - details: Dictionary with individual check results
+                - other individual check scores
         """
         pred_dict = extract_content_by_tags(prediction, self.reward_model_tags)
 
@@ -101,7 +101,8 @@ class UISubtaskRewardScorer:
             "answer": answer_score,
         }
 
-        return {"score": score, "details": details}
+        details["score"] = score
+        return details
 
     def _calculate_coordinates_score(self, pred_coordinates: list[tuple[float, float]] | None, gt_coordinates: list[tuple[float, float]] | None) -> float:
         """
@@ -178,7 +179,7 @@ class UISubtaskRewardScorer:
         Returns:
             Dictionary containing:
                 - score: Overall score (0-1)
-                - details: Dictionary with individual check results
+                - other individual check scores
         """
         pred_dict = extract_content_by_tags(prediction, self.executor_tags)
         format_score = sum(1 for value in pred_dict.values() if value is not None) / len(self.executor_tags)
@@ -205,7 +206,9 @@ class UISubtaskRewardScorer:
             print(f"Detect an action not in the action space: {e}")
             score = format_score * self.executor_weights["format"] + thinking_score * self.executor_weights["thinking"]
             details["action_in_action_space"] = 0
-            return {"score": score, "details": details}
+
+            details["score"] = score
+            return details
 
         gt_action_info = get_action_info(gt_dict["action"])
 
@@ -218,7 +221,8 @@ class UISubtaskRewardScorer:
         details["coordinates"] = coordinates_score
         details["action_args"] = action_args_score
 
-        return {"score": score, "details": details}
+        details["score"] = score
+        return details
 
     def score(self, prediction: str, ground_truth: dict) -> dict:
         """Score the prediction against ground truth.
@@ -239,7 +243,7 @@ class UISubtaskRewardScorer:
         Returns:
             Dictionary containing:
                 - score: Overall score (0-1)
-                - details: Dictionary with individual check results
+                - other individual check scores
         """
         gt_keys = ground_truth.keys()
         if "reasoning" in gt_keys and "should_end" in gt_keys and "goal_achieved" in gt_keys and "answer" in gt_keys:
