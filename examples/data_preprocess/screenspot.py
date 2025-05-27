@@ -40,13 +40,15 @@ if __name__ == "__main__":
             image = example.pop("image")
             instruction = example.pop("instruction").strip()
             bbox = example.pop("bbox")
+            data_type = example.pop("data_type")
 
             ground_truth = {
                 "bbox": bbox,
+                "data_type": data_type,
             }
 
             data = {
-                "data_source": data_source,
+                "data_source": "screenspot",
                 "prompt": [
                     {
                         "role": "user",
