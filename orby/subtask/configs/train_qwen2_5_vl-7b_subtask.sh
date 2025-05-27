@@ -7,11 +7,19 @@ ENGINE=${1:-vllm}
 TRAIN_FILES=$HOME/data/subtask_direct_distill/mix/train/executor.parquet # "[\"$HOME/data/subtask_direct_distill/mix/train/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/train/reward_model.parquet\"]"
 VAL_FILES=$HOME/data/subtask_direct_distill/mix/test/executor.parquet # "[\"$HOME/data/subtask_direct_distill/mix/test/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/test/reward_model.parquet\"]"
 
+echo "If you encounter OOM, try tweaking the following parameters:"
+echo "data.train_batch_size"
+echo "actor_rollout_ref.actor.ppo_mini_batch_size"
+echo "actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu"
+echo "actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu"
+echo "actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu"
+echo "actor_rollout_ref.rollout.n"
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
     data.train_files=$TRAIN_FILES \
     data.val_files=$VAL_FILES \
-    data.train_batch_size=64 \
+    data.train_batch_size=32 \
     data.max_prompt_length=7680 \
     data.max_response_length=512 \
     data.filter_overlong_prompts=True \
@@ -21,8 +29,8 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=Qwen/Qwen2.5-VL-7B-Instruct \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.model.use_remove_padding=True \
-    actor_rollout_ref.actor.ppo_mini_batch_size=64 \
-    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=32 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=4 \
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=8192 \
     actor_rollout_ref.actor.use_kl_loss=True \
     actor_rollout_ref.actor.kl_loss_coef=0.01 \
@@ -31,7 +39,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=True \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=8192 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=$ENGINE \
@@ -42,7 +50,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.n=4 \
     actor_rollout_ref.rollout.max_model_len=8192 \
     +actor_rollout_ref.rollout.limit_images=3 \
-    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=32 \
+    actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=16 \
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=8192 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
