@@ -16,10 +16,36 @@ Preprocess the Screenspot dataset to parquet format
 """
 
 import argparse
+import io
 import os
+import logging
 
 import datasets
+from PIL import Image
+from transformers import AutoProcessor
+from qwen_vl_utils import smart_resize
+
 from verl.utils.hdfs_io import copy, makedirs
+
+
+MODEL_PATH = "Qwen/Qwen2.5-VL-7B-Instruct"
+PROCESSOR = AutoProcessor.from_pretrained(MODEL_PATH)
+
+
+def get_resized_wh(image):
+    """
+    Get the resized width and height of the image.
+    """
+    resized_height, resized_width = smart_resize(
+        image.height,
+        image.width,
+        factor=PROCESSOR.image_processor.patch_size
+        * PROCESSOR.image_processor.merge_size,
+        min_pixels=PROCESSOR.image_processor.min_pixels,
+        max_pixels=PROCESSOR.image_processor.max_pixels,
+    )
+
+    return resized_height, resized_width
 
 
 if __name__ == "__main__":
@@ -29,7 +55,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    data_source = "rootsautomation/ScreenSpot"  # Replace with actual dataset source
+    data_source = "rootsautomation/ScreenSpot"
     print(f"Loading the {data_source} dataset from huggingface...", flush=True)
     dataset = datasets.load_dataset(data_source)
 
@@ -42,13 +68,26 @@ if __name__ == "__main__":
             bbox = example.pop("bbox")
             data_type = example.pop("data_type")
 
+            # Get image and resize ratios
+            if isinstance(image, bytes):
+                image = Image.open(io.BytesIO(image))
+            resized_height, resized_width = get_resized_wh(image)
+
+            # Adjust bbox based on resize ratios
+            bbox = [
+                bbox[0] * resized_width,
+                bbox[1] * resized_height,
+                bbox[2] * resized_width,
+                bbox[3] * resized_height,
+            ]
+
             ground_truth = {
                 "bbox": bbox,
                 "data_type": data_type,
             }
 
             data = {
-                "data_source": "screenspot",
+                "data_source": data_source,
                 "prompt": [
                     {
                         "role": "user",
@@ -81,6 +120,7 @@ if __name__ == "__main__":
 
     local_dir = os.path.expanduser(args.local_dir)
     os.makedirs(local_dir, exist_ok=True)
+
     test_dataset.to_parquet(os.path.join(local_dir, "test.parquet"))
 
     if args.hdfs_dir is not None:
