@@ -4,6 +4,8 @@ ENGINE=${1:-vllm}
 # export VLLM_ATTENTION_BACKEND=XFORMERS
 
 python3 -m verl.trainer.main_ppo \
+    trainer.n_gpus_per_node=8 \
+    trainer.nnodes=2 \
     algorithm.adv_estimator=grpo \
     data.train_files=$HOME/data/geo3k/train.parquet \
     data.val_files=$HOME/data/geo3k/test.parquet \
@@ -40,8 +42,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='verl_grpo_example_geo3k' \
     trainer.experiment_name='qwen2_5_vl_7b_function_rm' \
-    trainer.n_gpus_per_node=8 \
-    trainer.nnodes=1 \
     trainer.save_freq=20 \
     trainer.test_freq=5 \
     trainer.total_epochs=15 $@
