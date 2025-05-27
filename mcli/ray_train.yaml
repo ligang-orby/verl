@@ -26,9 +26,7 @@ command: |
   # Create datasets
   mkdir -p ~/data/uground/raw/
   aws s3 cp s3://orby-osu-va/mds_datasets/Q42024_Intake_Format/ActIO-ActionDescription/parquet/dev.parquet ~/data/uground/raw/dev.parquet
-  python examples/data_preprocess/uground.py --input_file=~/data/uground/raw/dev.parquet --split=train
-  python examples/data_preprocess/uground.py --input_file=~/data/uground/raw/dev.parquet --split=test
-
+  python examples/data_preprocess/geo3k.py
   # Start ray and training job
   sh scripts/run_ray.sh 
   sleep 60
@@ -82,6 +80,6 @@ command: |
   fi
   ray stop
 compute:
-  gpus: 32 # Number of GPUs to use
+  gpus: 16 # Number of GPUs to use
   cluster: r8z13p2
   gpu_type: h100_80gb
