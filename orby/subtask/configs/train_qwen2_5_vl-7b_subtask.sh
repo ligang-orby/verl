@@ -4,10 +4,13 @@ ENGINE=${1:-vllm}
 # If you are using vllm<=0.6.3, you might need to set the following environment variable to avoid bugs:
 # export VLLM_ATTENTION_BACKEND=XFORMERS
 
+TRAIN_FILES=$HOME/data/subtask_direct_distill/mix/train/executor.parquet # "[\"$HOME/data/subtask_direct_distill/mix/train/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/train/reward_model.parquet\"]"
+VAL_FILES=$HOME/data/subtask_direct_distill/mix/test/executor.parquet # "[\"$HOME/data/subtask_direct_distill/mix/test/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/test/reward_model.parquet\"]"
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files="[\"$HOME/data/subtask_direct_distill/mix/train/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/train/reward_model.parquet\"]" \
-    data.val_files="[\"$HOME/data/subtask_direct_distill/mix/test/executor.parquet\", \"$HOME/data/subtask_direct_distill/mix/test/reward_model.parquet\"]" \
+    data.train_files=$TRAIN_FILES \
+    data.val_files=$VAL_FILES \
     data.train_batch_size=64 \
     data.max_prompt_length=7680 \
     data.max_response_length=512 \
@@ -45,8 +48,8 @@ python3 -m verl.trainer.main_ppo \
     algorithm.use_kl_in_reward=False \
     trainer.critic_warmup=0 \
     trainer.logger=['console','wandb'] \
-    trainer.project_name='verl_grpo_example_uground' \
-    trainer.experiment_name='qwen2_5_vl_7b_function_rm' \
+    trainer.project_name='verl_grpo_example_subtask' \
+    trainer.experiment_name='qwen2_5_vl_7b_subtask' \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=10 \
