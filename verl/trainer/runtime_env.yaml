@@ -5,5 +5,3 @@ env_vars:
   # If you are using vllm<=0.6.3, you might need to set the following environment variable to avoid bugs:
   # VLLM_ATTENTION_BACKEND: "XFORMERS"
   GLOO_SOCKET_IFNAME: "eth0"
-  PYTHONUNBUFFERED: 1
-  CUDA_VISIBLE_DEVICES: 0,1,2,3,4,5,6,7
