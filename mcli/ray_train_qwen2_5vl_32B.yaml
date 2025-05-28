@@ -81,7 +81,8 @@ command: |
             trainer.save_freq=20 \
             trainer.test_freq=5 \
             trainer.total_epochs=15 $@ | tee /dev/tty | grep -o "raysubmit_[a-zA-Z0-9]*" | xargs -I{} ray job logs --follow {}
-  fi 
+  fi
+ 
 compute:
   gpus: 32 # Number of GPUs to use
   cluster: r8z13p2
