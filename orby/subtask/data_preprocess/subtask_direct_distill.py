@@ -189,7 +189,7 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> list[VERL
 
 
 @ray.remote
-def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, model_name: str = None) -> dict:
+def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, processor_ref=None, tokenizer_ref=None) -> dict:
     """
     Process a batch of protobuf URIs and save the output to a parquet file.
 
@@ -198,7 +198,8 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
         output_path (str): The output path to upload the parquet file.
         filter_overlong_prompts (bool): Whether to filter out overlong prompts.
         max_prompt_length (int): Maximum prompt length for filtering.
-        model_name (str): Model name for loading tokenizer/processor.
+        processor_ref: Ray object reference to the processor.
+        tokenizer_ref: Ray object reference to the tokenizer.
 
     Returns:
         dict: Statistics about data processing and filtering.
@@ -206,16 +207,9 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
     reward_model_data_list: list[VERLDataPoint] = []
     executor_data_list: list[VERLDataPoint] = []
 
-    # Initialize tokenizer and processor for filtering if needed
-    processor = None
-    tokenizer = None
-    if filter_overlong_prompts and model_name:
-        try:
-            processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
-            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        except Exception as e:
-            print(f"Warning: Failed to load processor/tokenizer for {model_name}, using text-only filtering: {e}")
-            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    # Get processor and tokenizer from Ray object store
+    processor = ray.get(processor_ref) if processor_ref else None
+    tokenizer = ray.get(tokenizer_ref) if tokenizer_ref else None
 
     # Statistics tracking
     stats = {
@@ -284,7 +278,30 @@ def main(input_path: str, output_path: str, filter_overlong_prompts: bool = Fals
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
     pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 10)]
 
-    tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path, filter_overlong_prompts, max_prompt_length, model_name) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
+    # Load processor and tokenizer once if filtering is enabled
+    processor = None
+    tokenizer = None
+    if filter_overlong_prompts and model_name:
+        processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        print(f"Successfully loaded processor and tokenizer for model {model_name}.")
+
+    # Put objects in Ray object store if they exist
+    processor_ref = ray.put(processor) if processor else None
+    tokenizer_ref = ray.put(tokenizer) if tokenizer else None
+
+    tasks = [
+        data_processing_task.remote(
+            pb_uris_batch,
+            batch_idx,
+            output_path,
+            filter_overlong_prompts,
+            max_prompt_length,
+            processor_ref,
+            tokenizer_ref,
+        )
+        for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)
+    ]
 
     pbar = tqdm(total=len(tasks), desc="Processing batches")
     all_stats = []
