@@ -17,8 +17,8 @@ The input is a parquet file that contains N generated sequences and (optional) t
 
 """
 
-from collections import defaultdict
 import pprint
+from collections import defaultdict
 
 import hydra
 import numpy as np
@@ -27,7 +27,6 @@ import ray
 from tqdm import tqdm
 
 from verl.utils.fs import copy_to_local
-from functools import partial
 
 
 # Copied from recipe/r1/main_eval.py
@@ -53,9 +52,7 @@ def get_custom_reward_fn(config):
     function_name = reward_fn_config.get("name")
 
     if not hasattr(module, function_name):
-        raise AttributeError(
-            f"Reward function '{function_name}' not found in '{file_path}'."
-        )
+        raise AttributeError(f"Reward function '{function_name}' not found in '{file_path}'.")
 
     print(f"using customized reward function '{function_name}' from '{file_path}'")
 
@@ -72,7 +69,7 @@ def process_item(reward_fn, data_source, response_lst, reward_data):
     for name, score in df.items():
         try:
             mean_scores[name] = np.mean(score)
-        except:
+        except Exception as _:
             pass
 
     return data_source, mean_scores
@@ -97,12 +94,7 @@ def main(config):
     compute_score = get_custom_reward_fn(config)
 
     # Create remote tasks
-    remote_tasks = [
-        process_item.remote(
-            compute_score, data_sources[i], responses[i], reward_model_data[i]
-        )
-        for i in range(total)
-    ]
+    remote_tasks = [process_item.remote(compute_score, data_sources[i], responses[i], reward_model_data[i]) for i in range(total)]
 
     # Process results as they come in
     with tqdm(total=total) as pbar:
