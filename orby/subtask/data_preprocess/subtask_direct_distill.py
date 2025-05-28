@@ -407,11 +407,11 @@ if __name__ == "__main__":
             raise ValueError("input_path should be provided if split is not provided.")
         if not args.output_path:
             raise ValueError("output_path should be provided if split is not provided.")
-
         input_path = args.input_path
         output_path = args.output_path
-        filter_overlong_prompts = True
-        max_prompt_length = args.max_prompt_length
-        model_name = args.model_name
+
+    filter_overlong_prompts = True
+    max_prompt_length = args.max_prompt_length
+    model_name = args.model_name
 
     main(input_path, output_path, filter_overlong_prompts, max_prompt_length, model_name)
