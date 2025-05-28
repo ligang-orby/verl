@@ -33,6 +33,9 @@ from verl.utils.model import compute_position_id_with_mask
 
 logger = logging.getLogger(__name__)
 
+ESTIMATED_IMAGE_TOKEN_LENGTH = 1500
+LIMIT_IMAGES = 3
+
 
 def collate_fn(data_list: list[dict]) -> dict:
     """Collate a batch of data."""
@@ -115,54 +118,8 @@ class RLHFDataset(Dataset):
         if self.filter_overlong_prompts:
             tokenizer = self.tokenizer
             prompt_key = self.prompt_key
-            image_key = self.image_key
-            processor = self.processor
-
-            def filter_overlong_prompts_with_actual_tokenization(doc):
-                # Build messages like in __getitem__
-                messages = copy.deepcopy(doc[prompt_key])
-
-                # If we have a processor (multimodal), tokenize with images
-                if processor is not None and image_key in doc and doc[image_key] is not None:
-                    # Process images like in _build_messages
-                    for message in messages:
-                        content = message["content"]
-                        content_list = []
-                        for segment in re.split("(<image>|<video>)", content):
-                            if segment == "<image>":
-                                content_list.append({"type": "image"})
-                            elif segment == "<video>":
-                                content_list.append({"type": "video"})
-                            else:
-                                content_list.append({"type": "text", "text": segment})
-                        message["content"] = content_list
-
-                    try:
-                        from verl.utils.dataset.vision_utils import process_image
-
-                        # Process images
-                        images = [process_image(image) for image in doc[image_key]]
-
-                        # Apply chat template and tokenize with images
-                        raw_prompt = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
-                        model_inputs = processor(text=[raw_prompt], images=images, return_tensors="pt")
-
-                        # Get actual token length including images
-                        actual_length = model_inputs["input_ids"].shape[1]
-
-                        return actual_length <= self.max_prompt_length
-                    except Exception as e:
-                        # If processing fails, fall back to text-only filtering
-                        print(f"Warning: Failed to process images for filtering, falling back to text-only: {e}")
-                        text_length = len(tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True))
-                        return text_length <= self.max_prompt_length
-                else:
-                    # Text-only tokenization
-                    text_length = len(tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True))
-                    return text_length <= self.max_prompt_length
-
             self.dataframe = self.dataframe.filter(
-                filter_overlong_prompts_with_actual_tokenization,
+                lambda doc: len(tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True)) <= self.max_prompt_length - ESTIMATED_IMAGE_TOKEN_LENGTH * LIMIT_IMAGES,
                 num_proc=self.num_workers,
                 desc=f"Filtering prompts longer than {self.max_prompt_length} tokens",
             )
