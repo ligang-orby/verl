@@ -3,7 +3,9 @@ Preprocess the subtask SVA v3 dataset to parquet format
 """
 
 import argparse
+import copy
 import os
+import re
 import time
 from typing import Literal, TypedDict
 
@@ -15,6 +17,7 @@ from fm.action_data_pb2 import ActionData
 from fm.llm_data_pb2 import LLMInteraction
 from PIL import Image
 from tqdm import tqdm
+from transformers import AutoProcessor, AutoTokenizer
 
 from orby.subtask.utils import action_parsing_utils, image_utils, s3_utils
 
@@ -98,7 +101,7 @@ def get_llm_interaction_data(llm_interaction: LLMInteraction, ability: Literal["
     return system_prompt, user_prompt, images, ground_truth
 
 
-def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataPoint:
+def convert_action_to_datapoints(action: ActionData, step_idx: int) -> list[VERLDataPoint]:
     """
     Convert individual action to a VERLDataPoint.
 
@@ -186,63 +189,194 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> VERLDataP
 
 
 @ray.remote
-def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str) -> int:
+def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, model_name: str = None) -> dict:
     """
     Process a batch of protobuf URIs and save the output to a parquet file.
 
     Args:
         pb_uris_batch (list[str]): A list of protobuf URIs.
         output_path (str): The output path to upload the parquet file.
+        filter_overlong_prompts (bool): Whether to filter out overlong prompts.
+        max_prompt_length (int): Maximum prompt length for filtering.
+        model_name (str): Model name for loading tokenizer/processor.
 
     Returns:
-        int: The number of data points created in the parquet file.
+        dict: Statistics about data processing and filtering.
     """
     reward_model_data_list: list[VERLDataPoint] = []
     executor_data_list: list[VERLDataPoint] = []
+
+    # Initialize tokenizer and processor for filtering if needed
+    processor = None
+    tokenizer = None
+    if filter_overlong_prompts and model_name:
+        try:
+            processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)
+            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        except Exception as e:
+            print(f"Warning: Failed to load processor/tokenizer for {model_name}, using text-only filtering: {e}")
+            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+
+    # Statistics tracking
+    stats = {
+        "total_reward_model": 0,
+        "total_executor": 0,
+        "filtered_reward_model": 0,
+        "filtered_executor": 0,
+        "kept_reward_model": 0,
+        "kept_executor": 0,
+    }
 
     for pb_uri in pb_uris_batch:
         td = s3_utils.load_trajectory_data_from_s3(pb_uri)
 
         for idx, action in enumerate(td.actions):
             data_points = convert_action_to_datapoints(action, idx)
-            reward_model_data_list.append(data_points[0])
+
+            # Process reward model data point
+            reward_model_dp = data_points[0]
+            stats["total_reward_model"] += 1
+
+            if filter_overlong_prompts and tokenizer:
+                if should_filter_datapoint(reward_model_dp, processor, tokenizer, max_prompt_length):
+                    stats["filtered_reward_model"] += 1
+                else:
+                    reward_model_data_list.append(reward_model_dp)
+                    stats["kept_reward_model"] += 1
+            else:
+                reward_model_data_list.append(reward_model_dp)
+                stats["kept_reward_model"] += 1
+
+            # Process executor data point if it exists
             if data_points[1]:
-                executor_data_list.append(data_points[1])
+                executor_dp = data_points[1]
+                stats["total_executor"] += 1
 
-    reward_model_dataset = Dataset.from_list(reward_model_data_list)
-    executor_dataset = Dataset.from_list(executor_data_list)
-    reward_model_dataset = reward_model_dataset.cast_column("images", Sequence(ImageData()))
-    executor_dataset = executor_dataset.cast_column("images", Sequence(ImageData()))
+                if filter_overlong_prompts and tokenizer:
+                    if should_filter_datapoint(executor_dp, processor, tokenizer, max_prompt_length):
+                        stats["filtered_executor"] += 1
+                    else:
+                        executor_data_list.append(executor_dp)
+                        stats["kept_executor"] += 1
+                else:
+                    executor_data_list.append(executor_dp)
+                    stats["kept_executor"] += 1
 
-    reward_model_output_path = f"{output_path.rstrip('/')}/reward_model/reward_model_{batch_idx:04d}.parquet"
-    executor_output_path = f"{output_path.rstrip('/')}/executor/executor_{batch_idx:04d}.parquet"
-    reward_model_dataset.to_parquet(reward_model_output_path)
-    executor_dataset.to_parquet(executor_output_path)
+    # Only create datasets and save if we have data
+    if reward_model_data_list:
+        reward_model_dataset = Dataset.from_list(reward_model_data_list)
+        reward_model_dataset = reward_model_dataset.cast_column("images", Sequence(ImageData()))
+        reward_model_output_path = f"{output_path.rstrip('/')}/reward_model/reward_model_{batch_idx:04d}.parquet"
+        reward_model_dataset.to_parquet(reward_model_output_path)
 
-    return len(reward_model_data_list) + len(executor_data_list)
+    if executor_data_list:
+        executor_dataset = Dataset.from_list(executor_data_list)
+        executor_dataset = executor_dataset.cast_column("images", Sequence(ImageData()))
+        executor_output_path = f"{output_path.rstrip('/')}/executor/executor_{batch_idx:04d}.parquet"
+        executor_dataset.to_parquet(executor_output_path)
+
+    return stats
 
 
-def main(input_path: str, output_path: str) -> None:
+def main(input_path: str, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, model_name: str = None) -> None:
     start_time = time.time()
     s3_client = boto3.client("s3")
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
     pb_uris_batches = [pb_uris[i : i + 10] for i in range(0, len(pb_uris), 10)]
 
-    tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
+    tasks = [data_processing_task.remote(pb_uris_batch, batch_idx, output_path, filter_overlong_prompts, max_prompt_length, model_name) for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)]
 
     pbar = tqdm(total=len(tasks), desc="Processing batches")
-    num_data_points = []
+    all_stats = []
     while tasks:
         done_id, tasks = ray.wait(tasks, num_returns=1)
         result = ray.get(done_id[0])
-        num_data_points.append(result)
+        all_stats.append(result)
         pbar.update(1)
 
     pbar.close()
 
-    print(f"Total number of data points (reward model + executor) created: {sum(num_data_points)}")
-    print(f"Took {(time.time() - start_time) / 60:.1f} minutes")
+    # Aggregate statistics
+    total_stats = {
+        "total_reward_model": sum(s["total_reward_model"] for s in all_stats),
+        "total_executor": sum(s["total_executor"] for s in all_stats),
+        "filtered_reward_model": sum(s["filtered_reward_model"] for s in all_stats),
+        "filtered_executor": sum(s["filtered_executor"] for s in all_stats),
+        "kept_reward_model": sum(s["kept_reward_model"] for s in all_stats),
+        "kept_executor": sum(s["kept_executor"] for s in all_stats),
+    }
+
+    # Print statistics
+    print("\n" + "=" * 60)
+    print("DATA PROCESSING STATISTICS")
+    print("=" * 60)
+    print(f"Total reward model data points: {total_stats['total_reward_model']}")
+    print(f"Total executor data points: {total_stats['total_executor']}")
+    print(f"Total data points: {total_stats['total_reward_model'] + total_stats['total_executor']}")
+
+    if filter_overlong_prompts:
+        print(f"\nFILTERING STATISTICS (max_prompt_length={max_prompt_length}):")
+        print(f"Filtered reward model data points: {total_stats['filtered_reward_model']} ({total_stats['filtered_reward_model'] / total_stats['total_reward_model'] * 100:.1f}%)")
+        print(f"Filtered executor data points: {total_stats['filtered_executor']} ({total_stats['filtered_executor'] / total_stats['total_executor'] * 100:.1f}%)")
+        print(f"Total filtered: {total_stats['filtered_reward_model'] + total_stats['filtered_executor']} ({(total_stats['filtered_reward_model'] + total_stats['filtered_executor']) / (total_stats['total_reward_model'] + total_stats['total_executor']) * 100:.1f}%)")
+
+    print(f"\nKept reward model data points: {total_stats['kept_reward_model']}")
+    print(f"Kept executor data points: {total_stats['kept_executor']}")
+    print(f"Total kept data points: {total_stats['kept_reward_model'] + total_stats['kept_executor']}")
+
+    print(f"\nProcessing took {(time.time() - start_time) / 60:.1f} minutes")
     print("Done!")
+    print("=" * 60)
+
+
+def should_filter_datapoint(data_point: VERLDataPoint, processor, tokenizer, max_prompt_length: int) -> bool:
+    """
+    Check if a data point should be filtered out based on token length.
+
+    Args:
+        data_point: The data point to check
+        processor: The processor for multimodal tokenization
+        tokenizer: The tokenizer for text-only tokenization
+        max_prompt_length: Maximum allowed prompt length
+
+    Returns:
+        True if the data point should be filtered out (too long), False otherwise
+    """
+    try:
+        messages = copy.deepcopy(data_point["prompt"])
+        images = data_point.get("images", [])
+
+        # If we have images and a processor, use multimodal tokenization
+        if processor is not None and images:
+            # Process messages to handle image tokens (similar to _build_messages in rl_dataset.py)
+            for message in messages:
+                content = message["content"]
+                content_list = []
+                for segment in re.split("(<image>|<video>)", content):
+                    if segment == "<image>":
+                        content_list.append({"type": "image"})
+                    elif segment == "<video>":
+                        content_list.append({"type": "video"})
+                    else:
+                        content_list.append({"type": "text", "text": segment})
+                message["content"] = content_list
+
+            # Apply chat template and tokenize with images
+            raw_prompt = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+            model_inputs = processor(text=[raw_prompt], images=images, return_tensors="pt")
+
+            # Get actual token length including images
+            actual_length = model_inputs["input_ids"].shape[1]
+
+            return actual_length > max_prompt_length
+        else:
+            # Text-only tokenization
+            text_length = len(tokenizer.apply_chat_template(messages, add_generation_prompt=True))
+            return text_length > max_prompt_length
+
+    except Exception as e:
+        print(f"Warning: Failed to tokenize data point for filtering, keeping it: {e}")
+        return False  # Keep the data point if we can't tokenize it
 
 
 if __name__ == "__main__":
@@ -250,6 +384,8 @@ if __name__ == "__main__":
     parser.add_argument("--input_path", "-i", help="Path to the input trajectory protobuf S3 directory. Not necessary if split is provided.")
     parser.add_argument("--output_path", "-o", help="Path to the output parquet S3 directory. Not necessary if split is provided.")
     parser.add_argument("--split", "-s", help="Split name, can be 'train' or 'test'. If provided, uses the default train and test input and output paths for experiment 2.")
+    parser.add_argument("--max_prompt_length", type=int, default=7680, help="Maximum prompt length in tokens (default: 1024)")
+    parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-VL-7B-Instruct", help="Model name for tokenizer/processor (default: Qwen/Qwen2.5-VL-7B-Instruct)")
     args = parser.parse_args()
 
     if args.split:
@@ -274,5 +410,8 @@ if __name__ == "__main__":
 
         input_path = args.input_path
         output_path = args.output_path
+        filter_overlong_prompts = True
+        max_prompt_length = args.max_prompt_length
+        model_name = args.model_name
 
-    main(input_path, output_path)
+    main(input_path, output_path, filter_overlong_prompts, max_prompt_length, model_name)
