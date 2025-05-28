@@ -12,6 +12,8 @@ command: |
   sed -i 's|mirrors.tuna.tsinghua.edu.cn|archive.ubuntu.com|g' /etc/apt/sources.list
 
   apt update
+
+  apt install iproute2 -y
   apt install -y dnsutils
   apt install -y emacs
   apt install -y awscli
@@ -28,7 +30,10 @@ command: |
   # Create datasets
   python examples/data_preprocess/geo3k.py
   export HYDRA_FULL_ERROR=1
-
+  INTERFACE=$(ip route | grep default | awk '{print $5}' | head -1)
+  echo "Using interface: $INTERFACE"
+  export GLOO_SOCKET_IFNAME=$INTERFACE
+  
   # Start ray and training job
   sh scripts/run_ray.sh 
   # hacky way to create a distribution barrier
@@ -41,7 +46,7 @@ command: |
         -- \
         python3 -m verl.trainer.main_ppo \
             trainer.n_gpus_per_node=8 \
-            trainer.nnodes=2 \
+            trainer.nnodes=4 \
             algorithm.adv_estimator=grpo \
             data.train_files=$HOME/data/geo3k/train.parquet \
             data.val_files=$HOME/data/geo3k/test.parquet \
@@ -83,6 +88,6 @@ command: |
             trainer.total_epochs=15 $@ | tee /dev/tty | grep -o "raysubmit_[a-zA-Z0-9]*" | xargs -I{} ray job logs --follow {}
   fi
 compute:
-  gpus: 16 # Number of GPUs to use
+  gpus: 32 # Number of GPUs to use
   cluster: r8z13p2
   gpu_type: h100_80gb
