@@ -34,5 +34,5 @@ pip3 install -e .[vllm]
 # mkdir -p ~/data/subtask_direct_distill/mix/test/
 # aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/test/executor.parquet ~/data/subtask_direct_distill/mix/test/executor.parquet
 # aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/test/reward_model.parquet ~/data/subtask_direct_distill/mix/test/reward_model.parquet
-# aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/executor.parquet ~/data/subtask_direct_distill/mix/train/executor.parquet
-# aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/reward_model.parquet ~/data/subtask_direct_distill/mix/train/reward_model.parquet
+# aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/executor_block512mb/part-00000-tid-5606977189806260880-50a5dbae-f82b-428c-ab12-45a3474fb603-246-1-c000.snappy.parquet ~/data/subtask_direct_distill/mix/train/executor.parquet
+# aws s3 cp s3://orby-osu-va/subtask/verl/experiment_2/train/reward_model_block512mb/part-00000-tid-5660220298143084375-48b56954-9361-46e9-a894-8cec0098a601-593-1-c000.snappy.parquet ~/data/subtask_direct_distill/mix/train/reward_model.parquet
