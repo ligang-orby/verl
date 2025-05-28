@@ -217,18 +217,20 @@ class UISubtaskRewardScorer:
         except Exception as e:
             # If the action is not in the action space, we should penalize the model and exit early
             print(f"Error with action type parsing: {e}")
+            parser_error = True
             action_type_score = 0
 
-        try:
-            coordinates_score = self._calculate_coordinates_score(pred_action_info["coordinates"], gt_action_info["coordinates"])
-        except Exception as e:
-            print(f"Error calculating coordinates score: {e}")
-            coordinates_score = 0
-        try:
-            action_args_score = self._calculate_action_args_score(pred_action_info["args"], gt_action_info["args"])
-        except Exception as e:
-            print(f"Error calculating action args score: {e}")
-            action_args_score = 0
+        coordinates_score = 0
+        action_args_score = 0
+        if not parser_error:
+            try:
+                coordinates_score = self._calculate_coordinates_score(pred_action_info["coordinates"], gt_action_info["coordinates"])
+            except Exception as e:
+                print(f"Error calculating coordinates score: {e}")
+            try:
+                action_args_score = self._calculate_action_args_score(pred_action_info["args"], gt_action_info["args"])
+            except Exception as e:
+                print(f"Error calculating action args score: {e}")
 
         score = format_score * self.executor_weights["format"] + thinking_score * self.executor_weights["thinking"] + action_type_score * self.executor_weights["action_type"] + coordinates_score * self.executor_weights["coordinates"] + action_args_score * self.executor_weights["action_args"]
         details = {
