@@ -33,6 +33,9 @@ from verl.utils.model import compute_position_id_with_mask
 
 logger = logging.getLogger(__name__)
 
+ESTIMATED_IMAGE_TOKEN_LENGTH = 1500
+LIMIT_IMAGES = 3
+
 
 def collate_fn(data_list: list[dict]) -> dict:
     """Collate a batch of data."""
@@ -116,7 +119,7 @@ class RLHFDataset(Dataset):
             tokenizer = self.tokenizer
             prompt_key = self.prompt_key
             self.dataframe = self.dataframe.filter(
-                lambda doc: len(tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True)) <= self.max_prompt_length,
+                lambda doc: len(tokenizer.apply_chat_template(doc[prompt_key], add_generation_prompt=True)) <= self.max_prompt_length - ESTIMATED_IMAGE_TOKEN_LENGTH * LIMIT_IMAGES,
                 num_proc=self.num_workers,
                 desc=f"Filtering prompts longer than {self.max_prompt_length} tokens",
             )
