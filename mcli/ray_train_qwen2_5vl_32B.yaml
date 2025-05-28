@@ -20,7 +20,7 @@ command: |
   pip install parquet-tools
   pip install sgl-kernel
   # Download model.
-  python3 -c "import transformers; transformers.pipeline(model='Qwen/Qwen2.5-VL-7B-Instruct')"
+  # python3 -c "import transformers; transformers.pipeline(model='Qwen/Qwen2.5-VL-32B-Instruct')"
 
   # Install verl lib: https://verl.readthedocs.io/en/latest/start/install.html
   pip3 install -e .[vllm]
@@ -32,16 +32,16 @@ command: |
   # Start ray and training job
   sh scripts/run_ray.sh 
   # hacky way to create a distribution barrier
-  sleep 120
   ray status
   if [ "$NODE_RANK" = "0" ]; then
+      ray status
       ray job submit --address="http://127.0.0.1:8265" \
         --runtime-env=verl/trainer/runtime_env.yaml \
         --no-wait \
         -- \
         python3 -m verl.trainer.main_ppo \
             trainer.n_gpus_per_node=8 \
-            trainer.nnodes=2 \
+            trainer.nnodes=4 \
             algorithm.adv_estimator=grpo \
             data.train_files=$HOME/data/geo3k/train.parquet \
             data.val_files=$HOME/data/geo3k/test.parquet \
@@ -51,7 +51,7 @@ command: |
             data.filter_overlong_prompts=True \
             data.truncation='error' \
             data.image_key=images \
-            actor_rollout_ref.model.path=Qwen/Qwen2.5-VL-7B-Instruct \
+            actor_rollout_ref.model.path=Qwen/Qwen2.5-VL-32B-Instruct \
             actor_rollout_ref.actor.optim.lr=1e-6 \
             actor_rollout_ref.model.use_remove_padding=True \
             actor_rollout_ref.actor.ppo_mini_batch_size=128 \
@@ -81,8 +81,8 @@ command: |
             trainer.save_freq=20 \
             trainer.test_freq=5 \
             trainer.total_epochs=15 $@ | tee /dev/tty | grep -o "raysubmit_[a-zA-Z0-9]*" | xargs -I{} ray job logs --follow {}
-  fi
+  fi 
 compute:
-  gpus: 16 # Number of GPUs to use
+  gpus: 32 # Number of GPUs to use
   cluster: r8z13p2
   gpu_type: h100_80gb

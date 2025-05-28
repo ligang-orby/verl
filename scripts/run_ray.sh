@@ -8,5 +8,5 @@ if [ "$NODE_RANK" = "0" ]; then
 else
     # wait for the head node to start
     sleep 60
-    ray start --address $(host $MASTER_ADDR | awk '/has address/ {print $NF}'):6379 
+    ray start --address $(host $MASTER_ADDR | awk '/has address/ {print $NF}'):6379  --block
 fi
