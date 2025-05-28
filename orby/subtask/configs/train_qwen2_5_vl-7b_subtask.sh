@@ -60,6 +60,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name='qwen2_5_vl_7b_subtask' \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
-    trainer.save_freq=10 \
-    trainer.test_freq=10 \
+    trainer.save_freq=100 \
+    trainer.test_freq=100 \
     trainer.total_epochs=2 $@
