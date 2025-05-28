@@ -110,6 +110,7 @@ class UISubtaskRewardScorer:
             + answer_score * self.reward_model_weights["answer"]
         )
         details = {
+            "score": score,
             "format": format_score,
             "reasoning": reasoning_score,
             "should_end": should_end_score,
@@ -117,7 +118,6 @@ class UISubtaskRewardScorer:
             "answer": answer_score,
         }
 
-        details["score"] = score
         return details
 
     def _calculate_coordinates_score(self, pred_coordinates: list[tuple[float, float]] | None, gt_coordinates: list[tuple[float, float]] | None) -> float:
@@ -210,44 +210,35 @@ class UISubtaskRewardScorer:
 
         thinking_score = int(self._check_text_similarity(pred_dict["thinking"], gt_dict["thinking"]))
 
-        details = {
-            "format": format_score,
-            "thinking": thinking_score,
-            "action_in_action_space": 1,
-            "action_type": 0,
-            "coordinates": 0,
-            "action_args": 0,
-        }
-
         try:
             pred_action_info = get_action_info(pred_dict["action"])
+            gt_action_info = get_action_info(gt_dict["action"])
+            action_type_score = int(pred_action_info["action_type"] == gt_action_info["action_type"])
         except Exception as e:
             # If the action is not in the action space, we should penalize the model and exit early
-            print(f"Detect an action not in the action space: {e}")
-            score = format_score * self.executor_weights["format"] + thinking_score * self.executor_weights["thinking"]
-            details["action_in_action_space"] = 0
-
-            details["score"] = score
-            return details
-
-        gt_action_info = get_action_info(gt_dict["action"])
-
-        action_type_score = int(pred_action_info["action_type"] == gt_action_info["action_type"])
-        details["action_type"] = action_type_score
+            print(f"Error with action type parsing: {e}")
+            action_type_score = 0
 
         try:
             coordinates_score = self._calculate_coordinates_score(pred_action_info["coordinates"], gt_action_info["coordinates"])
-            details["coordinates"] = coordinates_score
         except Exception as e:
             print(f"Error calculating coordinates score: {e}")
+            coordinates_score = 0
         try:
             action_args_score = self._calculate_action_args_score(pred_action_info["args"], gt_action_info["args"])
-            details["action_args"] = action_args_score
         except Exception as e:
             print(f"Error calculating action args score: {e}")
+            action_args_score = 0
 
         score = format_score * self.executor_weights["format"] + thinking_score * self.executor_weights["thinking"] + action_type_score * self.executor_weights["action_type"] + coordinates_score * self.executor_weights["coordinates"] + action_args_score * self.executor_weights["action_args"]
-        details["score"] = score
+        details = {
+            "score": score,
+            "format": format_score,
+            "thinking": thinking_score,
+            "action_type": action_type_score,
+            "coordinates": coordinates_score,
+            "action_args": action_args_score,
+        }
 
         return details
 
