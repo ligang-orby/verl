@@ -81,10 +81,26 @@ class UISubtaskRewardScorer:
         if not gt_dict["should_end"]:
             gt_dict["answer"] = ""
 
-        reasoning_score = int(self._check_text_similarity(pred_dict["reasoning"], gt_dict["reasoning"]))
-        should_end_score = int(pred_dict["should_end"] == gt_dict["should_end"])
-        goal_achieved_score = int(pred_dict["goal_achieved"] == gt_dict["goal_achieved"])
-        answer_score = int(self._check_text_similarity(pred_dict["answer"], gt_dict["answer"]))
+        try:
+            reasoning_score = int(self._check_text_similarity(pred_dict["reasoning"], gt_dict["reasoning"]))
+        except Exception as e:
+            print(f"Error calculating reasoning score: {e}")
+            reasoning_score = 0
+        try:
+            should_end_score = int(pred_dict["should_end"] == gt_dict["should_end"])
+        except Exception as e:
+            print(f"Error calculating should end score: {e}")
+            should_end_score = 0
+        try:
+            goal_achieved_score = int(pred_dict["goal_achieved"] == gt_dict["goal_achieved"])
+        except Exception as e:
+            print(f"Error calculating goal achieved score: {e}")
+            goal_achieved_score = 0
+        try:
+            answer_score = int(self._check_text_similarity(pred_dict["answer"], gt_dict["answer"]))
+        except Exception as e:
+            print(f"Error calculating answer score: {e}")
+            answer_score = 0
 
         score = (
             format_score * self.reward_model_weights["format"]
@@ -123,6 +139,10 @@ class UISubtaskRewardScorer:
         # If the model predicted None but the ground truth is not None, or vice versa,
         # we should penalize the model
         if pred_coordinates is None or gt_coordinates is None:
+            return 0.0
+
+        # If the length of the coordinates is different, we should penalize the model
+        if len(pred_coordinates) != len(gt_coordinates):
             return 0.0
 
         scores = []
@@ -213,15 +233,22 @@ class UISubtaskRewardScorer:
         gt_action_info = get_action_info(gt_dict["action"])
 
         action_type_score = int(pred_action_info["action_type"] == gt_action_info["action_type"])
-        coordinates_score = self._calculate_coordinates_score(pred_action_info["coordinates"], gt_action_info["coordinates"])
-        action_args_score = self._calculate_action_args_score(pred_action_info["args"], gt_action_info["args"])
+        details["action_type"] = action_type_score
+
+        try:
+            coordinates_score = self._calculate_coordinates_score(pred_action_info["coordinates"], gt_action_info["coordinates"])
+            details["coordinates"] = coordinates_score
+        except Exception as e:
+            print(f"Error calculating coordinates score: {e}")
+        try:
+            action_args_score = self._calculate_action_args_score(pred_action_info["args"], gt_action_info["args"])
+            details["action_args"] = action_args_score
+        except Exception as e:
+            print(f"Error calculating action args score: {e}")
 
         score = format_score * self.executor_weights["format"] + thinking_score * self.executor_weights["thinking"] + action_type_score * self.executor_weights["action_type"] + coordinates_score * self.executor_weights["coordinates"] + action_args_score * self.executor_weights["action_args"]
-        details["action_type"] = action_type_score
-        details["coordinates"] = coordinates_score
-        details["action_args"] = action_args_score
-
         details["score"] = score
+
         return details
 
     def score(self, prediction: str, ground_truth: dict) -> dict:
