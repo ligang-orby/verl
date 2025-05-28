@@ -268,7 +268,7 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
     return stats
 
 
-def main(input_path: str, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, model_name: str = None) -> None:
+def main(input_path: str, output_path: str, filter_overlong_prompts: bool, max_prompt_length: int, model_name: str) -> None:
     print("Start data processing with parameters:")
     print(f"- Input path: {input_path}")
     print(f"- Output path: {output_path}")
