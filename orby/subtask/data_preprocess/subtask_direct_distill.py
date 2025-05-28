@@ -189,7 +189,7 @@ def convert_action_to_datapoints(action: ActionData, step_idx: int) -> list[VERL
 
 
 @ray.remote
-def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, processor_ref=None, tokenizer_ref=None) -> dict:
+def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, processor=None, tokenizer=None) -> dict:
     """
     Process a batch of protobuf URIs and save the output to a parquet file.
 
@@ -198,18 +198,14 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
         output_path (str): The output path to upload the parquet file.
         filter_overlong_prompts (bool): Whether to filter out overlong prompts.
         max_prompt_length (int): Maximum prompt length for filtering.
-        processor_ref: Ray object reference to the processor.
-        tokenizer_ref: Ray object reference to the tokenizer.
+        processor: HF model processor for long prompt filtering.
+        tokenizer: HF model tokenizer for long prompt filtering.
 
     Returns:
         dict: Statistics about data processing and filtering.
     """
     reward_model_data_list: list[VERLDataPoint] = []
     executor_data_list: list[VERLDataPoint] = []
-
-    # Get processor and tokenizer from Ray object store
-    processor = ray.get(processor_ref) if processor_ref else None
-    tokenizer = ray.get(tokenizer_ref) if tokenizer_ref else None
 
     # Statistics tracking
     stats = {
@@ -273,6 +269,13 @@ def data_processing_task(pb_uris_batch: list[str], batch_idx: int, output_path: 
 
 
 def main(input_path: str, output_path: str, filter_overlong_prompts: bool = False, max_prompt_length: int = 1024, model_name: str = None) -> None:
+    print("Start data processing with parameters:")
+    print(f"- Input path: {input_path}")
+    print(f"- Output path: {output_path}")
+    print(f"- Filter overlong prompts: {filter_overlong_prompts}")
+    print(f"- Max prompt length: {max_prompt_length}")
+    print(f"- Model name: {model_name}")
+
     start_time = time.time()
     s3_client = boto3.client("s3")
     pb_uris = s3_utils.list_s3_uris(s3_client, input_path)
@@ -286,10 +289,6 @@ def main(input_path: str, output_path: str, filter_overlong_prompts: bool = Fals
         tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         print(f"Successfully loaded processor and tokenizer for model {model_name}.")
 
-    # Put objects in Ray object store if they exist
-    processor_ref = ray.put(processor) if processor else None
-    tokenizer_ref = ray.put(tokenizer) if tokenizer else None
-
     tasks = [
         data_processing_task.remote(
             pb_uris_batch,
@@ -297,8 +296,8 @@ def main(input_path: str, output_path: str, filter_overlong_prompts: bool = Fals
             output_path,
             filter_overlong_prompts,
             max_prompt_length,
-            processor_ref,
-            tokenizer_ref,
+            processor,
+            tokenizer,
         )
         for batch_idx, pb_uris_batch in enumerate(pb_uris_batches)
     ]
